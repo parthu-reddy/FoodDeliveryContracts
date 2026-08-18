@@ -17,9 +17,7 @@ Contract.make {
             contentType(applicationJson())
         }
         body([
-            address: "Bangalore, Karnataka, India",
-            city: "Bangalore",
-            country: "India"
+            address: "Bangalore, Karnataka, India"
         ])
     }
 }

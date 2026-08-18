@@ -6,16 +6,15 @@ Contract.make {
         method 'POST'
         urlPath('/api/v1/payments/create-order') {
             queryParameters {
-                parameter 'gateway': 'STRIPE'
+                parameter 'gateway': 'RAZORPAY'
             }
         }
         headers {
             contentType(applicationJson())
         }
         body([
-            orderId: 1001,
-            amount: 50.00,
-            currency: "USD"
+            internalOrderId: "123e4567-e89b-12d3-a456-426614174000",
+            amountInInr: 50.00
         ])
     }
     response {

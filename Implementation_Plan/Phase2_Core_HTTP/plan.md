@@ -55,5 +55,5 @@ Any service that imports `CommonLibrary` and injects `WalletServiceClient` (e.g.
 **Edge Case identified in `CommonMistakesDocumentation`:** If `CommonLibrary` exports `@FeignClient(name="wallet-service")` and a Consumer accidentally defines its own interface with the same name, Spring throws `ConflictingBeanDefinitionException`. 
 **Action:** Audit all consumers and delete local duplicate Feign clients. Consumers MUST use the shared `CommonLibrary` interface to guarantee the contract matches the stub.
 
-## 4. ONDC Integration Exclusions
+## 5. ONDC Integration Exclusions
 `ONDCIntegrationService` has local Feign clients for `ledger-service`, `customer-service`, `restaurant-service`, and `delivery-service`. These should NOT be migrated in Phase 2 because they are not exported via `CommonLibrary`. They belong in Phase 3 (Service-Specific APIs).
