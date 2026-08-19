@@ -36,39 +36,50 @@ When bulk-editing configuration files, basic IDE linters aren't enough. Execute 
 1. **XML (pom.xml):** Use an abstract syntax tree parser (e.g., Python `xml.etree.ElementTree`) to load every `pom.xml`. It must not throw a `ParseError`.
 2. **YAML (application-test.yml):** Use a strict YAML loader (e.g., Python `PyYAML`) to load every config. It must resolve into valid dictionaries without indentation exceptions.
 
-## 6. Broker URL Uniformity (Local Development Mode)
+## 6. Stub Resolution Strategy (supersedes the earlier local-broker section)
 
-**Context:** While implementation is in progress, every service must resolve stubs from the
-*local* workspace clone of the contracts repository, not from GitHub. The canonical value is:
+**Decision (2026-08-19): local development resolves stubs from `~/.m2`, never from a `file://` git
+broker.**
+
+### Why the file:// broker was abandoned
+
+The workspace path contains a space (`Food Delivery.nosync`). Spring Cloud Contract decodes the
+percent-encoded `%20` and then re-parses the result, so the space reappears and URI parsing fails:
 
 ```
-git://file:///Users/parthureddy/Documents/Food%20Delivery.nosync/FoodDeliveryContracts/.git
+Illegal character in path at index 40: file:///Users/parthureddy/Documents/Food Delivery.nosync/...
 ```
 
-The space in `Food Delivery.nosync` MUST stay percent-encoded (`%20`) because the value is a URI,
-not a shell path. The GitHub URL will be restored in Phase 6 (CI/CD) once implementation completes.
+This happens in **two independent layers** and is not a transient bug:
 
-**Three surfaces carry this value.** All three must agree, because the most specific one wins:
-1. `*/src/test/resources/application-test.yml` → `stubrunner.repositoryRoot`
-2. `*/pom.xml` → `spring-cloud-contract-maven-plugin` → `<contractsRepositoryUrl>`
-3. `*/src/test/java/**/*.java` → `@AutoConfigureStubRunner(repositoryRoot = "...")`
-   — an annotation attribute **overrides** the YAML, so editing only the YAML is a silent no-op.
+- the Maven plugin's `contractsRepositoryUrl` (build time), and
+- `BatchStubRunner` at **runtime**, which breaks any test resolving via `stubrunner.repositoryRoot`.
 
-**Do not rely on `grep`/`sed` to verify this.** Run the programmatic validator, which parses each
-file with a real parser (`yaml.safe_load`, `xml.etree.ElementTree`) rather than matching text:
+A space-free mirror was rejected: a second copy drifts silently, which already caused a stale
+`wallet_events.groovy` to be validated against a contract that no longer existed.
+
+### The rule
+
+- **Local/dev:** `stubsMode: LOCAL` with explicit `ids`; stubs come from `~/.m2`. Producers must be
+  `mvn install`-ed first — verify jar *contents*, not timestamps:
+  `unzip -l <stubs.jar> | grep groovy`.
+- **CI:** the GitHub broker URL, injected per environment. Tracked in Phase 8.
+- **Never** a `file://` repositoryRoot, in YAML, in a pom, or in an `@AutoConfigureStubRunner`
+  annotation, while the workspace path contains a space.
+
+### Programmatic validation
 
 ```bash
 python3 FoodDeliveryContracts/validate_broker_url.py
 ```
 
-**Expected Outcome:** exits `0` and prints `OK` for every occurrence across all three surfaces.
-The script fails (exit `1`) if any of the following hold:
-- a `repositoryRoot` / `contractsRepositoryUrl` differs from the canonical value (e.g. a stale
-  `https://github.com/...` or the throwaway `file:///tmp/FoodDelivery/...` copy);
-- the space is left unencoded, which yields a silently unresolvable URI;
-- the `.git` directory the URI points at does not exist on disk;
-- any `application-test.yml` fails to parse as valid YAML, or any `pom.xml` fails to parse as XML.
+**Expected outcome:** exits `0`. It fails if any of the following hold:
+- a `file://` broker URL appears in any YAML, pom, or annotation;
+- an `application-test.yml` declares `stubsMode: REMOTE` (dev must resolve from `.m2`);
+- a `stubrunner.repositoryRoot` is present at all in a test profile;
+- any `application-test.yml` fails to parse as YAML, or any `pom.xml` fails to parse as XML.
 
-**Known caveat (documented, not enforced by the script):** with `stubsMode: REMOTE` against a
-`file://` URI, Spring Cloud Contract *clones* the repository, so it reads **committed** state only.
-Contracts added to the working tree but not yet committed will NOT be visible to consumer tests.
+The root cause is the space in the workspace directory name, which has now produced three distinct
+failure classes: the Maven plugin, the runtime stub runner, and the `rsync` deployment problems
+recorded in `CommonMistakesDocumentation/AgentRules/agent-best-practices.md` items 6 and 7. Renaming
+the directory would remove all three, at the cost of updating ~170 files that hardcode the path.

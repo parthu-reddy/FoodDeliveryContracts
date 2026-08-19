@@ -54,7 +54,7 @@ roughly a third of the contracts are about to change shape.
 - Reusable validators live in `FoodDeliveryContracts/`. Current state at a glance:
 
   ```bash
-  python3 FoodDeliveryContracts/validate_broker_url.py            # Phase 1  -> passes
+  python3 FoodDeliveryContracts/validate_broker_url.py            # Phase 1  -> passes (LOCAL/.m2 rule)
   python3 FoodDeliveryContracts/validate_phase2_paths.py          # Phase 2  -> passes
   python3 FoodDeliveryContracts/validate_phase3_consumers.py      # Phase 3  -> 6 problems
   python3 FoodDeliveryContracts/sync_messaging_ids.py --check     # Phase 4  -> passes

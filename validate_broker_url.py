@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Validate that every Spring Cloud Contract broker URL points at the local workspace clone.
+"""Enforce the stub-resolution rule: local development resolves from ~/.m2, never a file:// broker.
 
-Parses each surface with a real parser (YAML/XML) instead of matching text, per the
-project's programmatic-validation rule. See Phase1_Foundation/validation.md section 6.
+The workspace path contains a space, and Spring Cloud Contract decodes %20 then re-parses it, so a
+file:// repositoryRoot fails both in the Maven plugin and in BatchStubRunner at runtime. See
+Phase1_Foundation/validation.md section 6.
 """
 import os
 import re
@@ -12,84 +13,87 @@ import xml.etree.ElementTree as ET
 import yaml
 
 WORKSPACE = "/Users/parthureddy/Documents/Food Delivery.nosync"
-CANONICAL = "git://file:///Users/parthureddy/Documents/Food%20Delivery.nosync/FoodDeliveryContracts/.git"
-
-MAVEN_NS = {"m": "http://maven.apache.org/POM/4.0.0"}
+SKIP = {".git", "target", "node_modules", "venv", "dist", ".venv"}
 ANNOTATION_RE = re.compile(r'repositoryRoot\s*=\s*"([^"]*)"')
-SKIP_DIRS = {".git", "target", "node_modules", "venv", "dist", ".venv"}
 
-failures = []
+problems = []
 checked = 0
 
 
-def report(path, found):
-    """Compare one occurrence against the canonical URL."""
-    global checked
-    checked += 1
-    rel = os.path.relpath(path, WORKSPACE)
-    if found == CANONICAL:
-        print(f"  OK   {rel}")
-    else:
-        print(f"  FAIL {rel}\n         found:    {found}\n         expected: {CANONICAL}")
-        failures.append(rel)
-
-
-def walk(suffix):
+def walk(pred):
     for root, dirs, files in os.walk(WORKSPACE):
-        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        dirs[:] = [d for d in dirs if d not in SKIP]
         for f in files:
-            if f.endswith(suffix):
+            if pred(f):
                 yield os.path.join(root, f)
 
 
-print("== 1. application-test.yml -> stubrunner.repositoryRoot ==")
-for path in sorted(walk(".yml")):
-    if os.path.basename(path) != "application-test.yml":
-        continue
-    try:
-        with open(path) as fh:
-            doc = yaml.safe_load(fh)
-    except yaml.YAMLError as exc:
-        print(f"  FAIL {os.path.relpath(path, WORKSPACE)} -- invalid YAML: {exc}")
-        failures.append(path)
-        continue
-    if isinstance(doc, dict) and isinstance(doc.get("stubrunner"), dict):
-        if "repositoryRoot" in doc["stubrunner"]:
-            report(path, doc["stubrunner"]["repositoryRoot"])
+def rel(p):
+    return os.path.relpath(p, WORKSPACE)
 
-print("== 2. pom.xml -> contractsRepositoryUrl ==")
-# Exact filename only: generated effective-pom.xml dumps are console logs, not valid XML.
-for path in sorted(p for p in walk("pom.xml") if os.path.basename(p) == "pom.xml"):
+
+print("== 1. application-test.yml: must use stubsMode LOCAL and declare no repositoryRoot ==")
+for path in sorted(walk(lambda f: f == "application-test.yml")):
+    try:
+        doc = yaml.safe_load(open(path)) or {}
+    except yaml.YAMLError as exc:
+        print(f"  FAIL {rel(path)} -- invalid YAML: {exc}")
+        problems.append(rel(path))
+        continue
+    sr = doc.get("stubrunner")
+    if not isinstance(sr, dict):
+        continue
+    checked += 1
+    issues = []
+    if sr.get("stubsMode") == "REMOTE":
+        issues.append("stubsMode REMOTE (dev must resolve from ~/.m2)")
+    if "repositoryRoot" in sr:
+        issues.append(f"declares repositoryRoot ({sr['repositoryRoot']})")
+    if issues:
+        print(f"  FAIL {rel(path)}: " + "; ".join(issues))
+        problems.append(rel(path))
+    else:
+        print(f"  OK   {rel(path)}")
+
+print("== 2. pom.xml: no contractsRepositoryUrl ==")
+for path in sorted(walk(lambda f: f == "pom.xml")):
     try:
         root_el = ET.parse(path).getroot()
     except ET.ParseError as exc:
-        print(f"  FAIL {os.path.relpath(path, WORKSPACE)} -- invalid XML: {exc}")
-        failures.append(path)
+        print(f"  FAIL {rel(path)} -- invalid XML: {exc}")
+        problems.append(rel(path))
         continue
     for el in root_el.iter():
-        if el.tag.endswith("}contractsRepositoryUrl") or el.tag == "contractsRepositoryUrl":
-            report(path, (el.text or "").strip())
+        if el.tag.endswith("contractsRepositoryUrl"):
+            checked += 1
+            print(f"  FAIL {rel(path)}: declares contractsRepositoryUrl ({(el.text or '').strip()})")
+            problems.append(rel(path))
 
-print("== 3. @AutoConfigureStubRunner -> repositoryRoot ==")
-for path in sorted(walk(".java")):
-    with open(path) as fh:
-        content = fh.read()
-    if "AutoConfigureStubRunner" not in content:
+print("== 3. @AutoConfigureStubRunner: no repositoryRoot attribute ==")
+for path in sorted(walk(lambda f: f.endswith(".java"))):
+    src = open(path).read()
+    if "AutoConfigureStubRunner" not in src:
         continue
-    for match in ANNOTATION_RE.findall(content):
-        report(path, match)
+    for match in ANNOTATION_RE.findall(src):
+        checked += 1
+        print(f"  FAIL {rel(path)}: pins repositoryRoot ({match})")
+        problems.append(rel(path))
 
-print("== 4. Referenced .git directory exists on disk ==")
-target = CANONICAL.replace("git://file://", "").replace("%20", " ")
-if os.path.isdir(target):
-    print(f"  OK   {target}")
-else:
-    print(f"  FAIL {target} does not exist")
-    failures.append(target)
+print("== 4. no file:// broker URL anywhere ==")
+found_file_url = False
+for path in sorted(list(walk(lambda f: f.endswith((".yml", ".yaml", ".java")))) +
+                   list(walk(lambda f: f == "pom.xml"))):
+    src = open(path, errors="ignore").read()
+    if re.search(r'git://file://', src):
+        print(f"  FAIL {rel(path)}: contains a file:// broker URL")
+        problems.append(rel(path))
+        found_file_url = True
+if not found_file_url:
+    print("  OK   none found")
 
-print(f"\nChecked {checked} occurrence(s).")
-if failures:
-    print(f"VALIDATION FAILED: {len(failures)} problem(s).")
+print(f"\nChecked {checked} stub-resolution declaration(s).")
+if problems:
+    print(f"VALIDATION FAILED: {len(set(problems))} file(s) with problems.")
     sys.exit(1)
-print("VALIDATION PASSED: all broker URLs point at the local workspace clone.")
+print("VALIDATION PASSED: all services resolve stubs from ~/.m2.")
 sys.exit(0)
