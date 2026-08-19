@@ -1,19 +1,20 @@
 package contracts.messaging
 
 org.springframework.cloud.contract.spec.Contract.make {
-    description("Should send ondc-order-created events")
-    label("ondc_order_created")
+    description("Should send ondc-settlement-event events")
+    label("ondc_settlement_event")
     input {
-        triggeredBy('fireOndcOrderCreated()')
+        triggeredBy('fireOndcSettlementEvent()')
     }
     outputMessage {
-        sentTo('ondc-order-created')
+        sentTo('ondc-settlement-event')
         body([
             eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
-            type: "ONDC_ORDER_CREATED",
+            type: "ONDC_SETTLEMENT_PROCESSED",
             payload: [
                 networkOrderId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
-                localOrderId: 1001
+                settlementId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
+                amount: 15.50
             ]
         ])
     }

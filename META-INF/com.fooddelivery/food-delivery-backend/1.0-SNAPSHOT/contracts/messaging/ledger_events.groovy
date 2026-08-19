@@ -9,10 +9,10 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('ledger-events')
         body([
-            eventId: "led-222",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "LEDGER_ENTRY_CREATED",
             payload: [
-                transactionId: "txn-999",
+                transactionId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 amount: 15.50
             ]
         ])

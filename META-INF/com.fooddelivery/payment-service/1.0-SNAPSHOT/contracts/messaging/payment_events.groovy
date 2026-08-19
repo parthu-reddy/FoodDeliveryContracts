@@ -9,11 +9,11 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('payment-events')
         body([
-            eventId: "pay-111",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "PAYMENT_SUCCESS",
             payload: [
                 orderId: 1001,
-                paymentId: "txn-999",
+                paymentId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 amount: 15.50
             ]
         ])

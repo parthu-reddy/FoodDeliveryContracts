@@ -9,11 +9,11 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('menu-events')
         body([
-            eventId: "menu-333",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "MENU_UPDATED",
             payload: [
                 restaurantId: 501,
-                itemId: "item-88"
+                itemId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}')))
             ]
         ])
     }

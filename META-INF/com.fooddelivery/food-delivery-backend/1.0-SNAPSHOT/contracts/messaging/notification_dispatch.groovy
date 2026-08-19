@@ -9,10 +9,10 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('platform.notifications.dispatch')
         body([
-            eventId: "not-444",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "NOTIFICATION_SENT",
             payload: [
-                userId: "user-123",
+                userId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 message: "Your order is confirmed."
             ]
         ])

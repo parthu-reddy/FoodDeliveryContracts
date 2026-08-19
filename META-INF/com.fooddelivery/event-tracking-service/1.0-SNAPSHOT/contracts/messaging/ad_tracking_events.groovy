@@ -9,11 +9,11 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('ad-tracking-events')
         body([
-            eventId: "ad-666",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "AD_CLICKED",
             payload: [
                 campaignId: 999,
-                userId: "user-123"
+                userId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}')))
             ]
         ])
     }

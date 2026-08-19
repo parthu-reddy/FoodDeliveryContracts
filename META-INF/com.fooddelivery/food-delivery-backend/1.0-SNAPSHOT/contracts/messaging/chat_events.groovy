@@ -9,11 +9,11 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('chat-events')
         body([
-            eventId: "chat-444",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "CHAT_MESSAGE_SENT",
             payload: [
-                chatId: "chat-100",
-                senderId: "user-123",
+                chatId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
+                senderId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 message: "Where is my food?"
             ]
         ])

@@ -9,11 +9,11 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('platform.logistics.dispatch')
         body([
-            eventId: "log-444",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "DISPATCH_ASSIGNED",
             payload: [
                 orderId: 1001,
-                executiveId: "exec-777"
+                executiveId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}')))
             ]
         ])
     }

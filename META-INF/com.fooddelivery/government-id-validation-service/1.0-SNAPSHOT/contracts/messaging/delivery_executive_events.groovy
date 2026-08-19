@@ -9,10 +9,10 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('delivery-executive-events')
         body([
-            eventId: "gov-888",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "EXECUTIVE_VALIDATED",
             payload: [
-                executiveId: "exec-777",
+                executiveId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 status: "APPROVED"
             ]
         ])

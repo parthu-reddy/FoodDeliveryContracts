@@ -13,7 +13,7 @@ org.springframework.cloud.contract.spec.Contract.make {
             type: "ORDER_CREATED",
             payload: [
                 orderId: 1001,
-                customerId: "user-123",
+                customerId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 restaurantId: 501,
                 totalAmount: 15.50
             ]

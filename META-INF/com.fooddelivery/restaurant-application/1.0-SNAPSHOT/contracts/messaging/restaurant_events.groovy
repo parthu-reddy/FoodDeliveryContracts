@@ -9,7 +9,7 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('restaurant-events')
         body([
-            eventId: "res-222",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "ORDER_ACCEPTED",
             payload: [
                 orderId: 1001,

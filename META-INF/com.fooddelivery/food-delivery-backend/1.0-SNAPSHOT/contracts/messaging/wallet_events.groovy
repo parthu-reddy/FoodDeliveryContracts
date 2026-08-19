@@ -9,10 +9,10 @@ org.springframework.cloud.contract.spec.Contract.make {
     outputMessage {
         sentTo('wallet-events')
         body([
-            eventId: "wal-111",
+            eventId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
             type: "WALLET_DEBITED",
             payload: [
-                userId: "user-123",
+                userId: $(producer(regex('[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}'))),
                 amount: 15.50
             ]
         ])
