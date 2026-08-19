@@ -12,9 +12,21 @@ Based on the `@FeignClient` scan in `CommonLibrary`, the following Producers mus
 - `GovernmentIDValidationService`
 
 ## 2. Defining Contracts (Central Git Repository)
-Because Phase 1 enforced a `REMOTE` Git broker architecture, contracts CANNOT be written in the local producer's `src/test/resources/contracts` folder. They will be ignored.
-
-Instead, the `.groovy` contracts MUST be written directly in the centralized `FoodDeliveryContracts` repository under the strict `META-INF/groupId/artifactId/version/contracts/` directory structure.
+> **CORRECTED 2026-08-19.** This section originally stated that contracts *cannot* live in the
+> producer's local `src/test/resources/contracts` folder and must be written only in the central
+> repository. That is **false**, and following it will waste your time.
+>
+> In the implemented system, local contracts are the source of truth for producer verification:
+> the `spring-cloud-contract-maven-plugin` reads `src/test/resources/contracts` and generates the
+> producer tests from it. All 48 contracts live locally, and all producer verification runs from
+> them. The central `META-INF/groupId/artifactId/version/contracts/` layout is the **publication**
+> format consumers resolve stubs from - it is a mirror, not the origin.
+>
+> The two are currently out of sync (48 local vs 30 central); reconciling and automating that
+> publication is **Phase 8**.
+>
+> Related constraint: the plugin's `contractsRepositoryUrl` cannot point at a path containing a
+> space, so a `REMOTE` producer mode against this workspace is not usable at all (see Phase 1).
 
 For example, WalletService contracts must be placed at:
 `/META-INF/com.fooddelivery/wallet-service/1.0-SNAPSHOT/contracts/`

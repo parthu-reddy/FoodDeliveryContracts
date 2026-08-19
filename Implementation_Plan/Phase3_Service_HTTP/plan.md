@@ -1,59 +1,52 @@
-# Phase 3: Service-Specific API Contracts (HTTP) — Plan
+# Phase 3: Service-Specific API Contracts (HTTP) - Plan
+
+Absorbs the former `Phase3.1_Consumer_Client_Validation` and `Phase3.1_Consumer_Validations`
+folders, which duplicated this scope.
 
 ## Objective
-Establish HTTP contracts for direct service-to-service calls that are NOT part of the `CommonLibrary`. These are usually specialized edge integrations (like ONDC routing, Campaign specific calls, or Customer to Restaurant queries).
 
-## 1. Producer Identification
-Based on the `@FeignClient` scan, the following applications export service-specific APIs:
-- `CustomerApplication` (Calls `RestaurantService`, `AdvertisementService`)
-- `RestaurantApplication` (Calls `AdvertisementService`, `DeliveryService`, `OrderService`)
-- `DeliveryExecutiveApplication` (Calls `CustomerService`)
-- `PaymentService` (No outgoing internal calls currently tracked for CDC)
-- `CommunicationService` (Calls `CustomerApplication`, `RestaurantApplication` via raw `RestTemplate`)
-- `ApiGateway` (Passthrough, technically a consumer but we don't mock it for CDC usually, we test edge services)
-- `LedgerService` (Standalone)
-- `WalletService` (Standalone)
-- `GovernmentIDValidationService` (Calls `IdentityService`, `RestaurantService`, `DeliveryExecutiveService`)
-- `BudgetLimitingService` (Calls `CampaignService`)
-- `ONDCIntegrationService` (Calls `LedgerService`, `CustomerService`, `RestaurantService`, `DeliveryService`)
-- `CampaignService` (Consumer: `BudgetLimitingService`, `RestaurantApplication`)
-- `BiddingEngine` (Consumer: `CustomerApplication`)
+Contracts and consumer validation for service-to-service HTTP calls that are **not** exported via
+`CommonLibrary` - specialised edge integrations (ONDC routing, ads, Customer to Restaurant queries)
+plus `CommunicationService`'s raw `RestTemplate` calls.
 
-### Edge Case: RestTemplate Bypassing Feign
-`CommunicationService` uses a standard `RestTemplate` to make internal calls to:
-1. `http://customer-service/api/v1/internal/orders/{orderId}/participants`
-2. `http://restaurant-service/api/v1/internal/restaurants/owner/{userId}/outlets`
+## What "done" means here
 
-Even though it bypasses `@FeignClient`, we MUST write contracts for these endpoints in `CustomerApplication` and `RestaurantApplication` because `CommunicationService` expects a specific JSON structure. In the consumer tests for `CommunicationService`, we will configure WireMock to mock these hostnames.
+Phase 3's original pass only proved `contextLoads()` - stubs downloaded but the Feign clients were
+never invoked. A consumer validation counts as done only when it:
 
-## 2. Defining Contracts (Producer Side)
-For each of these producers, create `.groovy` files in `src/test/resources/contracts/`.
+1. injects the `@FeignClient` (or `RestTemplate`),
+2. **invokes** the method against the stub, and
+3. asserts on the returned payload.
 
-### Edge Case: ONDC Integration Client Names
-The `ONDCIntegrationService` uses generic fallback names:
-- `@FeignClient(name = "customer-service")`
-- `@FeignClient(name = "restaurant-service")`
-- `@FeignClient(name = "delivery-service")`
+Injection without invocation is the failure mode that made this phase look finished when it was not.
+Four tests still sit at `contextLoads` with clients injected and unused.
 
-We must ensure that the `CustomerApplication` actually registers itself as `customer-service` in Eureka (and in its `spring.application.name`). If `CustomerApplication` is registered as `customer-app`, the CDC tests will still pass (because stubs don't check Eureka), but it will fail in production.
+## Implementation note: WireMock vs StubRunner
 
-## 3. Correcting Known Feign Client Mismatches
-According to the `CommonMistakesDocumentation`, there have been multiple instances of Feign Client name mismatches causing `503 Service Unavailable` errors.
+The original checklist specified `@AutoConfigureWireMock`. The implemented approach uses
+`@AutoConfigureStubRunner` with `stubsMode = LOCAL`, which resolves stub jars from `~/.m2` and
+starts WireMock internally. No service declares `spring-cloud-contract-wiremock`. This is a
+deliberate substitution, not a gap - but it means **producers must be `mvn install`-ed** before
+their consumers can be tested.
 
-1. **CampaignService -> PaymentService:**
-   `CampaignService` used `@FeignClient(name = "payment-gateway-service")`, but the actual name is `payment-service`. The contract stub runner relies on the Feign client name matching the `stubrunner.ids` exactly (e.g., `com.fooddelivery:payment-service:+:stubs`). We must enforce that all Feign Client names perfectly match the `artifactId` of the target stub.
+## Remaining work
 
-2. **GovernmentIDValidationService -> DeliveryService:**
-   Used `deliveryexecutive` instead of `delivery-service`. 
+All five gaps are unblocked: the producer contract each one needs already exists.
 
-**Action:** Phase 3 requires standardizing all `@FeignClient(name="...")` properties to precisely match the target microservice's `pom.xml` artifactId.
+| # | Consumer test | Missing |
+|---|---|---|
+| 1 | `CommunicationService` `ContractConsumerTest` + `CommunicationContractConsumerTest` | both are `contextLoads` only; the raw `RestTemplate` calls to Customer `/participants` and Restaurant `/outlets` are unasserted |
+| 2 | `GovernmentIDValidationService` `GovIdContractConsumerTest` | injects `DeliveryExecutiveClient` + `RestaurantServiceClient`, asserts neither; `IdentityServiceClient` not injected |
+| 3 | `ONDCIntegrationService` `ONDCContractConsumerTest` | injects 4 clients, asserts only `RestaurantServiceClient` |
+| 4 | `RestaurantApplication` `RestaurantContractConsumerTest` | `AdvertisementClient` injected but never exercised |
+| 5 | `CampaignService` | no consumer test exists at all (`PaymentServiceClient`) |
 
-## 4. Consumer Setup
-Update `application-test.yml` for all consuming services (like `ONDCIntegrationService`) to list the required stubs:
-```yaml
-stubrunner:
-  ids: 
-    - com.fooddelivery:customer-application:+:stubs
-    - com.fooddelivery:restaurant-application:+:stubs
-    - com.fooddelivery:delivery-executive-application:+:stubs
-```
+## Producer contracts available to assert against
+
+- Customer `/api/v1/internal/orders/{id}/participants` -> `CustomerApplication/.../getOrderParticipants.groovy`
+- Restaurant `/api/v1/internal/restaurants/owner/{id}/outlets` -> `RestaurantApplication/.../getOwnerOutlets.groovy`
+- Delivery `/api/v1/internal/admin/delivery/drivers/{id}` -> `DeliveryExecutiveApplication/.../internal/getDriverById.groovy`
+- Ledger `/api/v1/ledger/orders/{id}/total` -> `LedgerService/.../getOrderLedgerAmount.groovy`
+- Identity `/api/v1/internal/auth/initiate` -> `IdentityService/.../initiate-login.groovy`
+- Ads `/api/v1/ads/serve` -> `BiddingEngine/.../fetchAds.groovy`
+- Payment `/api/v1/payments/create-order` -> `PaymentGatewayIntegration/.../payment/create-order.groovy`

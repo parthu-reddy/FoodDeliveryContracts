@@ -1,12 +1,24 @@
-# Phase 2: Internal Core API Contracts (HTTP) — Checklist
+# Phase 2: Internal Core API Contracts (HTTP) - Checklist
 
-- [ ] Identify all API endpoints exposed by `WalletService` that are consumed by the `WalletServiceClient` in `CommonLibrary`.
-- [ ] Create `src/test/resources/contracts/wallet/` in `WalletService` and write `.groovy` files for each endpoint.
-- [ ] Repeat the process for `PaymentService`.
-- [ ] Repeat the process for `MapsIntegration`.
-- [ ] Repeat the process for `IdentityService`.
-- [ ] Repeat the process for `GovernmentIDValidationService`.
-- [ ] Ensure all `@FeignClient(path = "...")` prefixes in `CommonLibrary` match the URL prefixes in the written contracts.
-- [ ] Ensure `spring-cloud-starter-contract-verifier` generates the mock Spring MVC tests successfully for each producer (`mvn clean test`).
-- [ ] Push the generated stubs to the Git broker.
-- [ ] Configure `CustomerApplication` to download and run its Feign client tests against the `WalletService` stub.
+**Status: COMPLETE** (verified 2026-08-19)
+
+Contracts for the Feign clients exported by `CommonLibrary`:
+
+- [x] `WalletService` -> `contracts/get-wallet.groovy` (`/api/v1/wallets/{entityType}/{entityId}`).
+      Added late: the contract had existed only in the central broker, never locally.
+- [x] `PaymentService` -> `contracts/payment/create-order.groovy`.
+- [x] `MapsIntegration` -> `contracts/mapsintegration/reverse-geocode.groovy`.
+- [x] `IdentityService` -> `contracts/identity-service/initiate-login.groovy`.
+- [x] `GovernmentIDValidationService` -> `getVerificationSummary.groovy`,
+      `brandVerifyGstin.groovy`, `brandVerifyBankAccount.groovy`.
+- [x] `@FeignClient(path=...)` prefixes match contract URLs. -> `validate_phase2_paths.py` exits 0.
+- [x] Producer verification generates and passes. -> e.g. GovID `ContractVerifierTest` **3/3 green**.
+- [x] `CustomerApplication` runs Feign tests against the `WalletService` stub.
+      -> `WalletContractConsumerTest` **1/1 green**.
+
+## Moved out of this phase
+
+- [ ] ~~Push the generated stubs to the Git broker~~ -> moved to **Phase 8**.
+      Deliberately deferred: the central broker holds **30** contracts against **48** local, and
+      Phase 5 is about to change the shape of roughly a third of them. Publishing now would
+      entrench the wrong schema in the place consumers read from.
