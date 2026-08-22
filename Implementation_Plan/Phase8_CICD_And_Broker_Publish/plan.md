@@ -1,5 +1,67 @@
 # Phase 8: CI/CD Enforcement & Broker Publication - Plan
 
+> ## STATUS UPDATE — 2026-08-20: not started, and NEWLY BLOCKED
+>
+> ### The blocker is new and structural
+>
+> The workspace no longer has a multi-module aggregator. The root `pom.xml` **has been deleted** and
+> replaced by `FoodDeliveryParent/` — a dependency-management parent (`packaging: pom`, **no
+> `<modules>`**) that 21 services now inherit from.
+>
+> **CI is therefore broken right now.** `.github/workflows/ci-cd.yml` still runs:
+>
+> ```yaml
+> - name: Build and Test with Maven
+>   run: mvn clean install
+> ```
+>
+> from the workspace root, which fails immediately:
+>
+> ```
+> [ERROR] The goal you specified requires a project to execute but there is no POM in this directory
+> ```
+>
+> Nothing downstream of that step has run since the change.
+>
+> ### What this phase must now do first
+>
+> 1. **Decide the build topology.** Either restore an aggregator POM listing the modules, or change CI
+>    to build each service in dependency order — `FoodDeliveryParent` → `CommonLibrary` → the rest.
+>    The parent-only layout is a legitimate choice, but it means there is no single `mvn install` and
+>    CI must encode the order explicitly.
+> 2. **Then** gate on the validators, as originally planned.
+>
+> ### Validators ready to gate on
+>
+> All ten pass today. Each has been demonstrated to fail on an injected defect, which is the part that
+> makes them enforcement rather than decoration:
+>
+> `audit_http_contracts` · `validate_contract_base_coverage` · `validate_vacuous_consumer_tests` ·
+> `validate_messaging_base_isolation` · `validate_contract_topics` · `sync_messaging_ids --check` ·
+> `audit_consumer_contract_shapes` · `validate_consumer_assertions` · `validate_phase3_consumers` ·
+> `validate_broker_url`
+>
+> They are pure Python, run in seconds, and should go **before** the Maven step so a 2-second failure
+> does not wait on a full build.
+>
+> ### Do not enable the gate while the build is red
+>
+> A gate that always fails gets bypassed, and then the gate is worthless. Current per-module state is
+> in [README.md](../README.md); at least two modules regressed since 2026-08-19 and must be fixed
+> first.
+>
+> ### Broker publishing — still deferred, and still not `file://`
+>
+> All services resolve stubs from `~/.m2` with `stubsMode: LOCAL` (25 Java + 15 YAML declarations).
+> Publishing to a shared broker stays deferred until the contracts settle. **Do not reintroduce a
+> `file://` broker**: the workspace path contains a space, and Spring Cloud Contract decodes `%20`
+> then re-parses, failing in both the Maven plugin and `BatchStubRunner`. The abandoned attempt is
+> still on disk at `FoodDeliveryContracts/META-INF/` and has since diverged from the live contracts —
+> see `FoodDeliveryContracts/README.md`.
+
+---
+
+
 Formerly `Phase6_CICD`, now also absorbing the stub-publication item deferred from Phase 2 and the
 `GIT_TOKEN` item deferred from Phase 1.
 

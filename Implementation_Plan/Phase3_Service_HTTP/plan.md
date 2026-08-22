@@ -1,5 +1,29 @@
 # Phase 3: Service-Specific API Contracts (HTTP) - Plan
 
+> ## STATUS UPDATE — 2026-08-20: complete
+>
+> `validate_phase3_consumers.py` reports **0 files with problems** (was 6). Every HTTP consumer test
+> that injected a Feign client now actually invokes it, and the `contextLoads`-only shells are gone.
+>
+> `audit_http_contracts.py` additionally reports **30 HTTP contracts, 0 needing attention**, and
+> `validate_contract_base_coverage.py` passes — every contract's controller is mounted by its
+> module's test base.
+>
+> **Related work happened outside this plan.** Nine HTTP contracts were found to be *untrue* — they
+> asserted fields that did not exist on the DTOs they described — and were corrected under
+> `HttpContractRemediation/Phase1_ContractTestHarness/`. That effort also found that two modules'
+> `ContractTestBase` mounted only one controller each, so every contract for any other controller
+> returned 404 from an empty dispatcher, which read as a missing endpoint. Worth reading before
+> assuming a 404 here means an API gap.
+>
+> One contract is deliberately **pending**: `getDeliveryStatus.groovy` is marked `ignored()`, which
+> generates a `@Disabled` test. It specifies an endpoint ONDC needs that does not exist yet. Removing
+> `ignored()` is the switch that turns it back into a live test. See
+> `ONDCIntegrationService/UNIMPLEMENTED_FOR_ONDC/`.
+
+---
+
+
 Absorbs the former `Phase3.1_Consumer_Client_Validation` and `Phase3.1_Consumer_Validations`
 folders, which duplicated this scope.
 

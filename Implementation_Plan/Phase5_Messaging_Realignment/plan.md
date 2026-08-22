@@ -1,7 +1,68 @@
 # Phase 5: Messaging Contract Realignment - Plan
 
-**Status: not started. Highest priority - this is the only phase where the current state actively
-misleads.**
+> ## STATUS UPDATE — 2026-08-20: substantially complete
+>
+> The problem described below **has been fixed**, and this section supersedes the original status.
+> Measured, not assumed:
+>
+> | Check | Result |
+> |---|---|
+> | `audit_consumer_contract_shapes.py` | **0 consumers flagged** (was 3) |
+> | `validate_contract_topics.py` | 0 contracts target a topic nothing publishes to |
+> | `sync_messaging_ids.py --check` | PASSED — identifiers use regex matchers, not literals |
+> | Messaging contracts (excl. ReviewsService) | **34**, up from ~20 |
+>
+> **9 of 12 messaging base classes now publish through a real production path** — `publishViaOutbox`,
+> a real `OutboxProcessor`, or a real controller — rather than hand-writing the JSON the contract
+> asserts. That was the phase's actual acceptance criterion, and it is the part that mattered: fixing
+> the contract body alone would only have moved the fiction.
+>
+> ### The 3 that still hand-write their payload
+>
+> | Module | Current trigger style |
+> |---|---|
+> | `GovernmentIDValidationService` | raw `kafkaTemplate.send(...)` |
+> | `MapsIntegration` | raw `kafkaTemplate.send(...)` |
+> | `UserTrackingService` | neither — no publish call found in the base class |
+>
+> These are the remaining Phase 5 work. A trigger that hand-writes JSON proves only that the contract
+> agrees with itself.
+>
+> ### NEW DEFECT found during this audit — shared-topic queue cross-talk
+>
+> `CustomerApplication` now **fails two messaging contract tests**:
+>
+> ```
+> validate_wallet_events_reversal        PathNotFoundException: Missing property in path $['payload']
+> validate_order_payment_refund_requested NullPointerException: "receive" is null
+> ```
+>
+> Neither is a contract error. `KafkaMessageVerifier` keeps **one queue per topic and never drains it
+> between tests** — there is no `@BeforeEach` reset, only `poll()`. As soon as a module has two
+> contracts on the same topic, one test can consume the other's message: the first gets the wrong
+> shape, the last finds the queue empty.
+>
+> **Four modules are exposed**, and the risk grows as contracts are added:
+>
+> | Module | Shared topics |
+> |---|---|
+> | `CampaignService` | `ad-events` ×9 |
+> | `CustomerApplication` | `order-events` ×2, `wallet-events` ×2 |
+> | `BudgetLimitingService` | `ad-events` ×2 |
+> | `PaymentGatewayIntegration` | `payment-events` ×2 |
+>
+> **Fix:** drain the verifier's queues in a `@BeforeEach` on the base class (the verifier needs a
+> `reset()`), or key messages by correlation id rather than topic alone. Until then, contract results
+> on a shared topic depend on test execution order — which means a green run is not evidence.
+>
+> This is now the highest-priority item in this phase, ahead of the remaining 3 modules.
+
+---
+
+## Original plan (2026-08-19) — retained for context
+
+**Status at the time: not started. Highest priority - this is the only phase where the current state
+actively misleads.**
 
 ## The problem
 

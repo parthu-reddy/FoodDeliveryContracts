@@ -1,5 +1,30 @@
 # Phase 7: Kafka Edge Cases - Headers, Enums, Dead Annotations - Plan
 
+> ## STATUS UPDATE — 2026-08-20: complete
+>
+> - **eventType/aggregateType headers — done.** `CommonLibrary/OutboxProcessor` now publishes via a
+>   `ProducerRecord` carrying `HEADER_EVENT_TYPE` and `HEADER_AGGREGATE_TYPE`, instead of the bare
+>   `kafkaTemplate.send(topic, key, payload)` it used before. Verified in the source.
+> - **Orphaned annotations — done.** The `@RetryableTopic`/`@DltHandler` pair sitting on a *publisher*
+>   in `CustomerApplication.OrderSagaOrchestrator` was removed; the class had no `@KafkaListener` at
+>   all, so the DLT handler was unreachable.
+> - **Enum fallbacks — CANCELLED, deliberately.** The original premise ("an unrecognised enum value
+>   blocks a partition") is false: `CommonLibrary/KafkaConfig` registers a global
+>   `DefaultErrorHandler` with 3 retries and a `DeadLetterPublishingRecoverer`. Adding an `UNKNOWN`
+>   fallback to financial enums would convert safe quarantine into silent mis-booking. Not doing it
+>   is the correct outcome, not an omission.
+>
+> ### Related item still open
+>
+> `ONDCIntegrationService.SearchEventProcessor` carries `@RetryableTopic(attempts = "5")` and a
+> `@DltHandler`, but its body catches `Exception` and does **not** rethrow — so the retries never
+> happen and the DLT is unreachable. The annotations advertise durability the code does not provide.
+> ONDC is parked, so this is recorded rather than fixed; see
+> `ONDCIntegrationService/UNIMPLEMENTED_FOR_ONDC/`.
+
+---
+
+
 Formerly `Phase5_Edge_Kafka`. Renumbered so the plan runs in dependency order; the content is
 unchanged in intent, but every claim below was **re-verified against the codebase on 2026-08-19**
 and all four are still outstanding.

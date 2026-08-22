@@ -1,6 +1,64 @@
 # Phase 6: Consumer Messaging Validation - Plan
 
-**Status: blocked by Phase 5.** Do not start until the contracts describe real event shapes.
+> ## STATUS UPDATE — 2026-08-20: unblocked, in progress
+>
+> **No longer blocked.** Phase 5 is substantially complete, so the contracts now describe real event
+> shapes and consumer tests written against them mean something.
+>
+> The original problem statement below — *"25 tests, zero assertions, every one swallows the
+> failure"* — **is obsolete**:
+>
+> | Check | Then | Now |
+> |---|---|---|
+> | Vacuous consumer tests | 25 | **0** |
+> | Messaging consumer tests examined | 25 | 12 |
+> | Of those, meaningful (assert + verify + propagate) | 0 | **12** |
+> | `validate_consumer_assertions.py` | 25/25 not meaningful | **0/12 not meaningful** |
+>
+> **The 21 assert-nothing tests were deleted, not fixed.** Each was verified to contain exactly one
+> `@Test`, no assertion, no Mockito `verify`, and a swallowed exception — so removing them destroyed
+> no verification. They also cost **41.8 minutes** of every build; two `CustomerApplication` stubs
+> accounted for ~20 minutes each. The consumers they nominally covered are recorded in
+> `RandomDocuments/claude/06_Phase6ConsumerTests/deleted-vacuous-tests.md`.
+>
+> ### Remaining work: 6 consumers with no test at all
+>
+> There are **24 `@KafkaListener` consumers** (excluding ReviewsService). 18 are referenced by their
+> module's tests. These 6 are not:
+>
+> | Module | Consumer |
+> |---|---|
+> | `CampaignService` | `KafkaAnalyticsConsumer` |
+> | `CommunicationService` | `RefundDecisionListener` |
+> | `CustomerApplication` | `MenuCacheInvalidationListener` |
+> | `CustomerApplication` | `OrderEventConsumer` |
+> | `GovernmentIDValidationService` | `BrandCreatedEventListener` |
+> | `PaymentGatewayIntegration` | `OrderEventConsumer` |
+>
+> `CustomerApplication/OrderEventConsumer` is the notable one — it handles the primary order flow and
+> currently has no consumer-side verification.
+>
+> ### Before writing any of them, fix the shared-topic defect
+>
+> `KafkaMessageVerifier` does not drain its per-topic queue between tests, so on a shared topic one
+> test can consume another's message. Four modules are already exposed, and two
+> `CustomerApplication` contract tests fail because of it today. Writing more consumer tests on those
+> topics will produce results that depend on execution order. See
+> [Phase 5](../Phase5_Messaging_Realignment/plan.md) for the detail.
+>
+> ### Reference implementation
+>
+> `WalletService/src/test/java/com/fooddelivery/wallet/contract/WalletEarningsConsumerContractTest.java`
+> — triggers a real contract stub, waits with Awaitility, asserts the consumer's observable effect.
+> Every new test must be negative-control proven: revert the consumer and watch it fail. Do **not**
+> invert with Mockito `never()` inside `await().untilAsserted` — that passes at t=0 and proves nothing.
+
+---
+
+## Original plan (2026-08-19) — retained for context
+
+**Status at the time: blocked by Phase 5.** Do not start until the contracts describe real event
+shapes.
 
 ## The problem
 
