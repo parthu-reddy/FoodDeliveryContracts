@@ -214,6 +214,16 @@ def main():
                     continue
                 if recorded is None:
                     continue  # baseline rows carry no checksum
+                
+                import datetime
+                file_mtime = datetime.datetime.fromtimestamp(os.path.getmtime(path), datetime.timezone.utc).replace(tzinfo=None)
+                if file_mtime > installed_on:
+                    problems.append(
+                        f"V{version} AMENDED after apply -- {os.path.basename(path)}\n"
+                        f"      applied {installed_on:%Y-%m-%d %H:%M:%S}, but file modified at {file_mtime:%Y-%m-%d %H:%M:%S}"
+                    )
+                    continue
+
                 actual = flyway_checksum(path)
                 if actual != recorded:
                     problems.append(
