@@ -37,7 +37,7 @@ RESOLVED_IFACES = ("Pageable", "Sort")
 
 def base_class_files(module):
     return [f for f in glob.glob(f"{module}/src/test/**/*.java", recursive=True)
-            if "ContractTestBase" in os.path.basename(f)]
+            if "ContractTestBase" in os.path.basename(f) or "BaseContractTest" in os.path.basename(f)]
 
 def mounted_controllers(module):
     """Controller simple-names actually handed to standaloneSetup, plus whether a resolver is set.
@@ -59,6 +59,10 @@ def mounted_controllers(module):
             var_type[m.group(2)] = m.group(3)
         for m in re.finditer(r'\b(\w+)\s*=\s*new\s+(?:[\w.]*\.)?([A-Z]\w*Controller)\s*\(', src, re.S):
             var_type.setdefault(m.group(1), m.group(2))
+        for m in re.finditer(r'\b(\w+)\s*=\s*(?:Mockito\.)?mock\(\s*(?:[\w.]*\.)?([A-Z]\w*Controller)\.class\s*\)', src, re.S):
+            var_type.setdefault(m.group(1), m.group(2))
+        for m in re.finditer(r'(?:[\w.]*\.)?([A-Z]\w*Controller)\s+(\w+)\s*=\s*(?:Mockito\.)?mock\(\s*(?:[\w.]*\.)?([A-Z]\w*Controller)\.class\s*\)', src, re.S):
+            var_type[m.group(2)] = m.group(3)
         for m in SETUP_PAT.finditer(src):
             arg = m.group(1)
             for ctor in CTOR_PAT.findall(arg):       # inlined: standaloneSetup(new XController(...))
@@ -80,7 +84,7 @@ def main():
         mounted, has_resolver = mounted_controllers(module)
         for cf in sorted(glob.glob(f"{module}/src/test/resources/contracts/**/*.groovy", recursive=True)):
             s = open(cf, errors="replace").read()
-            if "outputMessage" in s or "sentTo" in s: continue
+            if "outputMessage" in s or "sentTo" in s or "ignored()" in s: continue
             mm = METHOD_PAT.search(s)
             url = next((p.search(s).group(1) for p in URL_PATS if p.search(s)), None)
             rec = {"module": module, "contract": os.path.basename(cf),
