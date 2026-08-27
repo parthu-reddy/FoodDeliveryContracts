@@ -671,6 +671,246 @@ SPEC_MODULES = ["CustomerApplication", "RestaurantApplication", "DeliveryExecuti
                 "CampaignService", "LedgerService", "CommunicationService"]
 
 
+# Schemas that have been deliberately tightened to declare `required`, as `Module:SchemaName`.
+# A ratchet, not a target: this check fails when a LISTED schema loses its `required` array, and
+# says nothing about schemas that are not listed. A hard "everything must be strict" gate would be
+# red from day one and would be switched off; one that can only tighten is one people keep.
+#
+# The pagination entries are strict because of OpenApiPaginationRequiredCustomizer in CommonLibrary,
+# not because of per-DTO annotations -- listing them here is what catches that customizer being
+# dropped or unregistered from a module's spec test.
+#
+# Adding to this list is the last step of tightening a schema. Removing from it requires a reason
+# recorded in the commit, not convenience.
+STRICT_SCHEMAS = {
+    "BiddingEngine:AdRequestDTO": ["context", "deviceId", "geo"],
+    "BiddingEngine:Bid": ["id", "impid", "price"],
+    "BiddingEngine:BidResponse": ["id", "seatbid"],
+    "BiddingEngine:SeatBid": ["bid"],
+    "BiddingEngine:SponsoredListingDTO": ["adId", "adm", "campaignId"],
+    "CampaignService:AdCreativeRequest": ["format"],
+    "CampaignService:AdCreativeResponse": ["adGroupId", "assetUrl", "auditStatus", "createdAt", "format", "id", "updatedAt"],
+    "CampaignService:AdGroupRequest": ["name"],
+    "CampaignService:AdGroupResponse": ["active", "campaignId", "createdAt", "id", "name", "updatedAt"],
+    "CampaignService:AdvertiserRegistrationRequest": ["companyName"],
+    "CampaignService:AdvertiserResponse": ["companyName", "createdAt", "id", "updatedAt", "userId"],
+    "CampaignService:ApiResponseAdCreativeResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseAdGroupResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseAdvertiserResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseCampaignResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseListAdCreativeResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseMapStringString": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponsePageAdGroupResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponsePageCampaignPerformanceResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponsePageCampaignResponse": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseString": ["message", "success", "timestamp"],
+    "CampaignService:ApiResponseVoid": ["message", "success", "timestamp"],
+    "CampaignService:CampaignPacingDTO": ["advertiserId"],
+    "CampaignService:CampaignPerformanceResponse": ["advertiserId", "campaignId", "date", "id", "spend"],
+    "CampaignService:CampaignRequest": ["advertiserId", "dailyBudget", "maxBid", "name", "startDate"],
+    "CampaignService:CampaignResponse": ["advertiserId", "dailyBudget", "frequencyCap", "id", "lifetimeBudget", "maxBid", "name", "startDate", "status", "version"],
+    "CampaignService:ContextualKeywords": ["keywords"],
+    "CampaignService:Daypart": ["dayOfWeek", "endTime", "startTime"],
+    "CampaignService:DaypartingConfig": ["dayparts"],
+    "CampaignService:GeoTargeting": ["regions"],
+    "CampaignService:PageAdGroupResponse": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CampaignService:PageCampaignPerformanceResponse": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CampaignService:PageCampaignResponse": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CampaignService:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "CampaignService:TopupWalletRequest": ["amount"],
+    "CommunicationIntegration:ApiResponseVoid": ["message", "success", "timestamp"],
+    "CommunicationIntegration:DeviceRegistrationRequest": ["fcmToken", "platform"],
+    "CommunicationService:CreateSessionRequest": ["orderId", "participants"],
+    "CommunicationService:IceServer": ["urls"],
+    "CommunicationService:ParticipantDto": ["entityType", "userId"],
+    "CommunicationService:TurnCredentialsResponse": ["iceServers"],
+    "CustomerApplication:AddressRequest": ["addressLine1", "city", "label", "latitude", "longitude", "state", "zipCode"],
+    "CustomerApplication:ApiResponseBoolean": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseCustomer": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseCustomerAddressDto": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseListCustomerAddressDto": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseListMapStringObject": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseListObject": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseListOrderResponse": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseMapStringObject": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseOrderResponse": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponsePageCustomerAddressDto": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponsePageOrderResponse": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseQuoteResponse": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseString": ["message", "success", "timestamp"],
+    "CustomerApplication:ApiResponseVoid": ["message", "success", "timestamp"],
+    "CustomerApplication:Customer": ["createdAt", "id", "phoneNumber"],
+    "CustomerApplication:CustomerAddressDto": ["addressLine1", "city", "customerId", "id", "label", "latitude", "longitude", "state", "zipCode"],
+    "CustomerApplication:DelayApprovalRequest": ["approved"],
+    "CustomerApplication:Order": ["createdAt", "customerId", "id", "restaurantId", "status", "totalAmount", "updatedAt"],
+    "CustomerApplication:OrderItemRequest": ["menuItemId", "quantity"],
+    "CustomerApplication:OrderItemResponse": ["id", "menuItemId", "name", "price", "quantity"],
+    "CustomerApplication:OrderRequest": ["customerId", "deliveryAddressId", "items", "restaurantId"],
+    "CustomerApplication:OrderResponse": ["cgst", "createdAt", "customerId", "customerPlatformFee", "deliveryAddress", "deliveryFee", "deliveryStatus", "foodCost", "id", "itemTotal", "items", "restaurantId", "restaurantName", "sgst", "status", "totalAmount"],
+    "CustomerApplication:PageCustomerAddressDto": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CustomerApplication:PageMapStringObject": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CustomerApplication:PageOrder": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CustomerApplication:PageOrderResponse": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CustomerApplication:PageSupportTicket": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "CustomerApplication:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "CustomerApplication:PartialRefundRequest": ["amount"],
+    "CustomerApplication:QuoteRequest": ["deliveryAddressId", "restaurantId"],
+    "CustomerApplication:QuoteResponse": ["cgst", "deliveryFee", "distanceKm", "driverPayout", "minAmountForFreeDelivery", "platformFee", "restaurantDeliveryContribution", "sgst", "subtotal", "total"],
+    "CustomerApplication:ResolveRequest": ["approved"],
+    "CustomerApplication:SupportTicket": ["createdAt", "customerId", "id", "orderId", "reason", "status"],
+    "DeliveryExecutiveApplication:ApiResponseDeliveryExecutive": ["message", "success", "timestamp"],
+    "DeliveryExecutiveApplication:ApiResponseListMapStringObject": ["message", "success", "timestamp"],
+    "DeliveryExecutiveApplication:ApiResponseMapStringString": ["message", "success", "timestamp"],
+    "DeliveryExecutiveApplication:ApiResponseObject": ["message", "success", "timestamp"],
+    "DeliveryExecutiveApplication:ApiResponseVoid": ["message", "success", "timestamp"],
+    "DeliveryExecutiveApplication:BankRequest": ["accountNumber", "ifscCode", "kycFullName"],
+    "DeliveryExecutiveApplication:BiometricRequest": ["selfieUrl"],
+    "DeliveryExecutiveApplication:DLRequest": ["dateOfBirth", "dlNumber"],
+    "DeliveryExecutiveApplication:DeliveryExecutive": ["createdAt", "id", "phoneNumber", "status", "updatedAt"],
+    "DeliveryExecutiveApplication:DeliveryOnboardRequest": ["fullName", "phoneNumber", "vehicleNumber"],
+    "DeliveryExecutiveApplication:DriverLocationDTO": ["id", "lat", "lng", "status"],
+    "DeliveryExecutiveApplication:LocationPayload": ["isMockLocation", "latitude", "longitude", "speedKmh", "timestampMs"],
+    "DeliveryExecutiveApplication:PageDeliveryExecutive": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "DeliveryExecutiveApplication:PageDriverLocationDTO": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "DeliveryExecutiveApplication:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "DeliveryExecutiveApplication:RCRequest": ["registrationNumber"],
+    "DeliveryExecutiveApplication:TelemetryEventRequest": ["driverId", "lat", "lng"],
+    "DeliveryExecutiveApplication:ToggleStatusRequest": ["available", "driverId"],
+    "DeliveryExecutiveApplication:UpdateOrderStatusRequest": ["status"],
+    "GovernmentIDValidationService:BankAccountRequest": ["accountNumber", "brandName", "ifscCode"],
+    "GovernmentIDValidationService:BankRequest": ["accountNumber", "ifscCode", "kycFullName"],
+    "GovernmentIDValidationService:BiometricRequest": ["selfieUrl"],
+    "GovernmentIDValidationService:DLRequest": ["dateOfBirth", "dlNumber"],
+    "GovernmentIDValidationService:GstinRequest": ["brandName", "gstin"],
+    "GovernmentIDValidationService:RCRequest": ["registrationNumber"],
+    "IdentityService:ApiResponseListSessionInfo": ["message", "success", "timestamp"],
+    "IdentityService:ApiResponseMapStringString": ["message", "success", "timestamp"],
+    "IdentityService:ApiResponsePageUserDTO": ["message", "success", "timestamp"],
+    "IdentityService:ApiResponseString": ["message", "success", "timestamp"],
+    "IdentityService:ApiResponseUserDTO": ["message", "success", "timestamp"],
+    "IdentityService:ApiResponseVoid": ["message", "success", "timestamp"],
+    "IdentityService:PageUserDTO": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "IdentityService:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "IdentityService:RoleRequestDTO": ["roleName"],
+    "IdentityService:SessionInfo": ["browser", "deviceInfo", "lastActive", "os", "serviceName", "sessionId"],
+    "IdentityService:UpdateProfileRequest": ["name"],
+    "IdentityService:UserDTO": ["id", "phoneNumber", "roles"],
+    "LedgerService:LedgerAccount": ["balance", "id", "lockVersion", "ownerId", "ownerType"],
+    "LedgerService:LedgerEntry": ["accountId", "amount", "category", "createdAt", "direction", "id", "transactionId"],
+    "LedgerService:LedgerTransactionDto": ["amount", "category", "date", "fromAccountId", "toAccountId", "transactionId"],
+    "LedgerService:PageLedgerEntry": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "LedgerService:PageLedgerTransactionDto": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "LedgerService:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "LedgerService:PayoutSettlementRequest": ["amount", "ownerId", "ownerType"],
+    "MapsIntegration:DispatchOrderRequest": ["cityId", "restaurantCoords"],
+    "MapsIntegration:SetAvailabilityRequest": ["available", "cityId", "driverId"],
+    "MapsIntegration:UpdateLocationRequest": ["cityId", "driverId", "lat", "lng"],
+    "PaymentGatewayIntegration:ApiResponseString": ["message", "success", "timestamp"],
+    "PaymentGatewayIntegration:CreateOrderRequest": ["amountInInr", "internalOrderId"],
+    "PaymentGatewayIntegration:OutboxEventEntity": ["aggregateId", "aggregateType", "createdAt", "eventType", "id", "payload", "retryCount", "status"],
+    "PaymentGatewayIntegration:PageOutboxEventEntity": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "PaymentGatewayIntegration:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "PaymentGatewayIntegration:RefundRequest": ["amountInInr", "gatewayOrderId"],
+    "RestaurantApplication:ApiResponseBoolean": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseBrand": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseCategoryDTO": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListBrand": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListCategoryDTO": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListMapStringObject": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListMasterMenuItem": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListMenuItemDTO": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListOutlet": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListOutletMenuOverride": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListRestaurantOrder": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListTimingDTO": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseMapStringObject": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseMapStringString": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseMasterMenuItem": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseObject": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseOutlet": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseOutletMenuOverride": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponsePageMapStringObject": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponsePageRestaurantOrder": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseString": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseVoid": ["message", "success", "timestamp"],
+    "RestaurantApplication:BankAccountRequest": ["accountNumber", "brandName", "ifscCode"],
+    "RestaurantApplication:Brand": ["id", "name", "ownerId"],
+    "RestaurantApplication:BrandOnboardRequest": ["bankAccountNumber", "gstin", "ifscCode", "name", "pan"],
+    "RestaurantApplication:CategoryDTO": ["name"],
+    "RestaurantApplication:CategoryTimingDTO": ["closingTime", "openingTime"],
+    "RestaurantApplication:GstinRequest": ["brandName", "gstin"],
+    "RestaurantApplication:MasterMenuItem": ["basePrice", "name", "packingCharge"],
+    "RestaurantApplication:MenuItemDTO": ["id", "isAvailable", "name", "price", "restaurantId"],
+    "RestaurantApplication:Outlet": ["brandId", "id", "name"],
+    "RestaurantApplication:OutletMenuOverride": ["isAvailable"],
+    "RestaurantApplication:OutletOnboardRequest": ["fssaiLicenseNumber", "lat", "lng", "name", "timings"],
+    "RestaurantApplication:OutletSettingsUpdateRequest": ["defaultPrepTimeSeconds"],
+    "RestaurantApplication:OutletStatusUpdateRequest": ["isActive"],
+    "RestaurantApplication:OutletTiming": ["closingTime", "createdAt", "id", "openingTime", "updatedAt"],
+    "RestaurantApplication:OutletTimingsUpdateRequest": ["timings"],
+    "RestaurantApplication:PageMapStringObject": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "RestaurantApplication:PageRestaurantOrder": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "RestaurantApplication:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "RestaurantApplication:RestaurantOrder": ["createdAt", "deliveryStatus", "orderId", "restaurantId", "status"],
+    "RestaurantApplication:SetBrandCategoryTimingRequest": ["categoryId"],
+    "RestaurantApplication:SetOutletCategoryTimingRequest": ["categoryId", "timings"],
+    "RestaurantApplication:TimingDTO": ["closingTime", "openingTime"],
+    "RestaurantApplication:TimingRequest": ["closingTime", "openingTime"],
+    "RestaurantApplication:VerificationCallbackRequest": ["status", "verificationType"],
+    "ReviewsService:ApiResponsePagedModelReviewResponseDto": ["message", "success", "timestamp"],
+    "ReviewsService:ApiResponseReviewAggregateDto": ["message", "success", "timestamp"],
+    "ReviewsService:ApiResponseReviewResponseDto": ["message", "success", "timestamp"],
+    "ReviewsService:CreateReviewRequest": ["entityId", "entityType", "rating"],
+    "ReviewsService:PagedModelReviewResponseDto": ["content"],
+    "ReviewsService:ReviewAggregateDto": ["averageRating", "entityId", "entityType", "totalReviews"],
+    "ReviewsService:ReviewResponseDto": ["createdAt", "entityId", "entityType", "id", "rating", "userId"],
+    "WalletService:ApiResponseMapStringString": ["message", "success", "timestamp"],
+    "WalletService:ApiResponseString": ["message", "success", "timestamp"],
+    "WalletService:CreateWalletRequest": ["currency"],
+    "WalletService:OutboxEventEntity": ["aggregateId", "aggregateType", "createdAt", "eventType", "id", "payload", "retryCount", "status"],
+    "WalletService:PageOutboxEventEntity": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "WalletService:PageWalletTransactionDto": ["content", "empty", "first", "last", "number", "numberOfElements", "size", "totalElements", "totalPages"],
+    "WalletService:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
+    "WalletService:TopupWalletRequest": ["amount"],
+    "WalletService:TransactionRequest": ["amount"],
+    "WalletService:WalletDto": ["balance", "currency", "entityId", "entityType", "id", "status"],
+    "WalletService:WalletTransactionDto": ["amount", "createdAt", "id", "transactionType", "walletId"],
+}
+
+
+def check_schema_strictness_ratchet():
+    """Every schema on STRICT_SCHEMAS still declares AT LEAST the fields recorded for it.
+
+    Presence of a `required` array is not enough: dropping one field from a ten-field schema
+    leaves the array non-empty and would sail through. Verified 2026-08-27 -- the first version
+    of this check did exactly that, so it compares the recorded set against the current one.
+    Gaining required fields is fine; losing one is the regression.
+    """
+    regressed = []
+    for spec_path in sorted(ROOT.glob("*/openapi.json")):
+        mod = spec_path.parent.name
+        try:
+            schemas = json.loads(read(spec_path)).get("components", {}).get("schemas", {}) or {}
+        except Exception as exc:
+            regressed.append(f"{mod}: spec unreadable ({exc})")
+            continue
+        for key, expected in STRICT_SCHEMAS.items():
+            if not key.startswith(mod + ":"):
+                continue
+            name = key.split(":", 1)[1]
+            if name not in schemas:
+                regressed.append(f"{key} no longer exists in the spec")
+                continue
+            actual = set(schemas[name].get("required") or [])
+            lost = sorted(set(expected) - actual)
+            if lost:
+                regressed.append(f"{key} lost required field(s): {', '.join(lost)}")
+    check("SCHEMA-STRICT",
+          f"schemas on the strictness ratchet keep their required fields ({len(STRICT_SCHEMAS)} listed)",
+          not regressed,
+          f"{len(regressed)} regressed: " + "; ".join(sorted(regressed)[:6]))
+
+
 def check_spec_matches_controllers():
     def norm(t):
         return re.sub(r"\{[^}]*\}", "{}", t)
@@ -725,7 +965,8 @@ def run():
     for fn in (check_i1, check_orphan_annotations, check_authz, check_i3, check_i4, check_i5, check_i8, check_i9,
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
-               check_i35, check_i36, check_i37, check_spec_matches_controllers, check_g10):
+               check_i35, check_i36, check_i37, check_schema_strictness_ratchet,
+               check_spec_matches_controllers, check_g10):
         try:
             fn()
         except Exception as e:  # a broken check must not look like a passing one
