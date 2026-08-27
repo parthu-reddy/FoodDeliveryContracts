@@ -878,6 +878,52 @@ STRICT_SCHEMAS = {
 }
 
 
+def check_contract_stub_cycles():
+    """INFORMATIONAL. Reports mutual contract-stub dependencies; never fails the build.
+
+    A consumer contract test replays a stub jar produced by the producer's build and resolved at
+    test time from ~/.m2. Five pairs are mutual, so in any single-pass build one side of each pair
+    reads the PREVIOUS build's recording. Demonstrated 2026-08-27: a producer contract broken in
+    source left its consumer's test green, differing only in which jar sat in the local repository.
+
+    This does NOT fail, deliberately. `FoodDeliveryContracts/build_verify.sh` publishes every stub
+    jar before any test runs, which makes a cycle harmless -- nothing is read before everything is
+    written. Failing on a harmless condition produces a gate people switch off, and it would block
+    legitimate new contract tests. The count is printed so a rise is visible to anyone reading the
+    output, and so the number can be ratcheted down deliberately rather than policed.
+
+    The checks that DO fail are the ones where failure means something: stub jars containing no
+    stubs (build_verify.sh), and service-to-service code dependencies (Phase 8 gate 3).
+    """
+    artifact_to_module = {}
+    for pom in sorted(ROOT.glob("*/pom.xml")):
+        ids = re.findall(r"<artifactId>([^<]+)</artifactId>", read(pom)[:2500])
+        if len(ids) >= 2:
+            artifact_to_module[ids[1]] = pom.parent.name
+
+    edges = set()
+    for f in ROOT.glob("*/src/test/**/*.java"):
+        src = read(f)
+        if "AutoConfigureStubRunner" not in src:
+            continue
+        consumer = f.relative_to(ROOT).parts[0]
+        for m in re.finditer(r"com\.fooddelivery:([a-z0-9-]+):", src):
+            producer = artifact_to_module.get(m.group(1))
+            if producer and producer != consumer:
+                edges.add((consumer, producer))
+
+    adj = {}
+    for c, p in edges:
+        adj.setdefault(c, set()).add(p)
+    cycles = sorted({tuple(sorted((a, b))) for a in adj for b in adj[a] if b in adj and a in adj[b]})
+
+    detail = f"informational: {len(edges)} stub edges, {len(cycles)} mutual pair(s)"
+    if cycles:
+        detail += " -- use FoodDeliveryContracts/build_verify.sh so build order cannot matter: "
+        detail += "; ".join(f"{a} <-> {b}" for a, b in cycles)
+    check("STUB-CYCLES", "contract stub graph (informational, never fails)", True, detail)
+
+
 def check_schema_strictness_ratchet():
     """Every schema on STRICT_SCHEMAS still declares AT LEAST the fields recorded for it.
 
@@ -965,7 +1011,7 @@ def run():
     for fn in (check_i1, check_orphan_annotations, check_authz, check_i3, check_i4, check_i5, check_i8, check_i9,
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
-               check_i35, check_i36, check_i37, check_schema_strictness_ratchet,
+               check_i35, check_i36, check_i37, check_contract_stub_cycles, check_schema_strictness_ratchet,
                check_spec_matches_controllers, check_g10):
         try:
             fn()
