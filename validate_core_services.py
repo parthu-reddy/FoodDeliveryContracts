@@ -668,7 +668,8 @@ SPEC_DRIFT_BUDGET = 0
 
 SPEC_MODULES = ["CustomerApplication", "RestaurantApplication", "DeliveryExecutiveApplication",
                 "MapsIntegration", "WalletService", "IdentityService", "PaymentGatewayIntegration",
-                "CampaignService", "LedgerService", "CommunicationService"]
+                "CampaignService", "LedgerService", "CommunicationService",
+                "UserTrackingService"]
 
 
 # Schemas that have been deliberately tightened to declare `required`, as `Module:SchemaName`.
@@ -878,6 +879,268 @@ STRICT_SCHEMAS = {
 }
 
 
+def check_mcp_identity():
+    """No @Tool may manufacture an Authentication, and MCP must stay off the gateway.
+
+    `ChatMcpService.createMockAuthentication(userId)` built an Authentication from a caller-supplied
+    string, marked it authenticated, granted it ROLE_ADMIN and passed it to the real controllers --
+    satisfying every ownership check by construction. Removed 2026-08-28; tools now read
+    SecurityContextHolder as a controller would.
+
+    Comments are stripped first. The javadoc that REPLACED that method names it while explaining
+    what it replaced, and an unstripped search flagged the fix as the defect -- the fourth time in
+    this workspace that a check has read prose documenting a rule as a violation of it.
+
+    Deliberately NOT checked: a @Tool taking a `String userId`. Most such parameters name the
+    SUBJECT being asked about, not the caller -- `getActiveOrdersForUser(userId)` calls an admin
+    controller about someone else. A gate cannot tell a subject from an identity claim, and one
+    that guesses would demand the removal of legitimate parameters. That concern is authorization,
+    tracked in the Phase 6 record.
+    """
+    problems = []
+    # Anonymous Authentication implementations are always wrong; constructing a token is wrong
+    # only inside a tool surface, because SecurityContextFilter legitimately does it. Scoping by
+    # WHERE beats trying to parse the arguments: an earlier version required ROLE_ inside the
+    # constructor parentheses and missed `new UsernamePasswordAuthenticationToken(id, null,
+    # List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))` because [^)]* stops at the nested
+    # bracket. Found by break-testing 2026-08-28.
+    anonymous_impl = re.compile(r"new\s+[\w.]*Authentication\s*\(\s*\)\s*\{|createMockAuthentication")
+    # [\w.]* not \w*: this codebase writes fully-qualified names inline
+    # (`new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(...)`),
+    # and \w does not match a dot. Second regex miss in this one check, both found by break-testing.
+    builds_token = re.compile(r"new\s+[\w.]*UsernamePasswordAuthenticationToken\s*\(|"
+                              r"SecurityContextHolder\s*\.\s*getContext\s*\(\s*\)\s*\.\s*setAuthentication")
+    for f in sorted(ROOT.glob("*/src/main/**/*.java")):
+        src = read(f)
+        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        src = re.sub(r"//[^\n]*", "", src)
+        if anonymous_impl.search(src):
+            problems.append(f"{f.relative_to(ROOT)} implements Authentication by hand")
+        elif "@Tool" in src and builds_token.search(src):
+            problems.append(f"{f.relative_to(ROOT)} is a tool surface that constructs an Authentication")
+
+    for cfg in (ROOT / "Deployment/api-gateway.yml",
+                ROOT / "ApiGateway/src/main/resources/application.yml"):
+        if not cfg.is_file():
+            continue
+        for i, line in enumerate(read(cfg).splitlines(), 1):
+            if line.strip().startswith("#"):
+                continue
+            if re.search(r"Path=.*\b(mcp|sse)\b", line, re.I):
+                problems.append(f"{cfg.name}:{i} routes MCP through the gateway -- "
+                                f"the containment for tool authorization is gone")
+    check("MCP-IDENTITY",
+          "no @Tool manufactures an Authentication, and MCP is not routed at the edge",
+          not problems,
+          "; ".join(problems[:4]))
+
+
+def check_scheduled_jobs_classified():
+    """Every @Scheduled class states how it behaves under replication.
+
+    The premise this started from was wrong three times over. The plan recorded "19 classes, no
+    distributed scheduler lock, correct only at one replica". Measured 2026-08-27:
+
+      * a grep for ShedLock/@SchedulerLock/LockProvider found nothing because the platform rolled
+        its own -- RedisLock.tryAcquire is SET NX PX with an atomic Lua release;
+      * a grep for tryAcquire missed the jobs that call redisTemplate.setIfAbsent directly;
+      * counting either way missed that some jobs are safe for reasons other than a lock.
+
+    True state: of 17 classes, 12 hold a distributed lock, 1 uses SKIP LOCKED, 2 are idempotent,
+    1 is guarded by @Version, and 1 MUST NOT be locked because it refreshes an in-memory
+    per-instance index. Zero are unsafe.
+
+    None of that is visible from the code without reading each job, which is why the markers exist.
+    This check only asserts a classification is present -- the accuracy of a marker is a review
+    question, not something a script can settle.
+    """
+    # The marker must sit in the javadoc block immediately above the class declaration, not merely
+    # somewhere in the file: a loose "// TODO @replication-safe:" comment satisfied the first
+    # version of this check (found by break-testing it on 2026-08-27).
+    unmarked = []
+    for f in sorted(ROOT.glob("*/src/main/**/*.java")):
+        src = read(f)
+        if "@Scheduled" not in re.sub(r"//[^\n]*", "", src):
+            continue
+        decl = re.search(r"^(?:public\s+)?(?:final\s+)?class\s+" + re.escape(f.stem) + r"\b", src, re.M)
+        classified = False
+        if decl:
+            preceding = src[:decl.start()]
+            blocks = re.findall(r"/\*\*.*?\*/", preceding, re.S)
+            if blocks and re.search(r"@replication(-safe)?:", blocks[-1]):
+                classified = True
+        if not classified:
+            unmarked.append(str(f.relative_to(ROOT)))
+    check("SCHEDULE-CLASSIFIED",
+          "every @Scheduled class records its behaviour under replication",
+          not unmarked,
+          f"{len(unmarked)} unclassified: " + "; ".join(unmarked[:4]))
+
+
+def check_idempotency_key_retention():
+    """Idempotency keys are swept, and the sweeper is not re-copied per service.
+
+    Writers claim keys via `tryClaim` or a `save`; the cleanup path is `deleteOlderThan`. Measured
+    2026-08-27: ELEVEN services wrote keys and THREE swept them, using byte-identical copies of the
+    same 29-line class. Detecting this needed the repository interface read, not a filename guessed:
+    successive greps for `new IdempotencyKey(`, then `.save(`, then `tryClaim(` reported 2, then 5,
+    then 8 offenders.
+
+    The sweeper now lives in CommonLibrary and is auto-configured wherever a datasource exists, so
+    the invariant is no longer per-service. What is checked is that the autoconfiguration is still
+    registered and that nobody has reintroduced a local copy.
+    """
+    problems = []
+    imports = ROOT / "CommonLibrary/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports"
+    if not imports.is_file() or "IdempotencySweepConfiguration" not in read(imports):
+        problems.append("IdempotencySweepConfiguration is not registered -- nothing sweeps idempotency keys")
+    if not (ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/idempotency/IdempotencyKeySweeper.java").is_file():
+        problems.append("IdempotencyKeySweeper is missing from CommonLibrary")
+    for f in ROOT.glob("*/src/main/**/*.java"):
+        mod = f.relative_to(ROOT).parts[0]
+        if mod == "CommonLibrary":
+            continue
+        if re.search(r"\.deleteOlderThan\s*\(", read(f)):
+            problems.append(f"{mod}: {f.name} re-implements the sweeper CommonLibrary provides")
+    check("IDEMPOTENCY-RETENTION",
+          "idempotency keys are swept centrally and not re-copied per service",
+          not problems,
+          "; ".join(problems[:4]))
+
+
+def check_money_not_through_double():
+    """No monetary value is read out of JSON via a double, and the platform mapper forbids it.
+
+    The call site is not where this is fixed. On a DoubleNode, BigDecimal.valueOf(asDouble()) and
+    new BigDecimal(asText()) are byte-identical -- the number is already through binary floating
+    point before the tree exists. Measured 2026-08-27: 12345678901234567.89 becomes
+    12345678901234568 either way. USE_BIG_DECIMAL_FOR_FLOATS on the shared ObjectMapper is what
+    actually fixes it, so both halves are checked.
+    """
+    problems = []
+    jackson = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/config/JacksonConfig.java"
+    if not jackson.is_file() or "USE_BIG_DECIMAL_FOR_FLOATS" not in read(jackson):
+        problems.append("the platform ObjectMapper does not parse floats as BigDecimal")
+    money = re.compile(r"(?i)(amount|price|balance|fee|total|refund|payout|charge|spend)")
+    for f in ROOT.glob("*/src/main/**/*.java"):
+        src = re.sub(r"/\*.*?\*/", "", read(f), flags=re.S)
+        src = re.sub(r"//[^\n]*", "", src)
+        for i, line in enumerate(src.splitlines(), 1):
+            if "asDouble" in line and money.search(line):
+                problems.append(f"{f.relative_to(ROOT)}:{i} reads money through a double")
+    check("MONEY-PRECISION",
+          "monetary values are not read out of JSON through a double",
+          not problems,
+          f"{len(problems)}: " + "; ".join(problems[:4]))
+
+
+def check_messaging_context_minimal():
+    """Messaging contract bases stay minimal, and keep their exclusions in `properties`.
+
+    Two regressions this guards, both of which have happened:
+
+    1. PaymentGatewayIntegration's base dropped its DataSource/JPA exclusions on 2026-08-26 in
+       favour of ddl-auto=none, leaving every messaging contract test building a DataSource and
+       EntityManagerFactory it never touches.
+    2. Exclusions written as @EnableAutoConfiguration(exclude = ...) on a nested configuration leak
+       into OTHER tests' contexts, because every service component-scans com.fooddelivery. That
+       surfaced as unrelated tests failing with "No bean named 'entityManagerFactory'".
+
+    Comments are stripped before matching. Three separate checks today produced false findings by
+    matching the prose that DOCUMENTS a rule -- including two files whose javadoc explains exactly
+    the anti-pattern in (2).
+    """
+    problems = []
+    for f in sorted(ROOT.glob("*/src/test/**/BaseMessagingClass.java")):
+        src = read(f)
+        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        src = re.sub(r"//[^\n]*", "", src)
+        mod = f.relative_to(ROOT).parts[0]
+        # Read the VALUE of spring.autoconfigure.exclude, not the whole file: an `import
+        # org...DataSourceAutoConfiguration;` line satisfies a naive substring search even when the
+        # exclusion has been removed. That hole was found by break-testing this very check on
+        # 2026-08-27 -- the break applied and the check still passed.
+        excluded = ""
+        marker = "spring.autoconfigure.exclude="
+        if marker in src:
+            tail = src[src.index(marker) + len(marker):]
+            # the value is a run of "..." segments joined by +, ending at the next property
+            for seg in re.finditer(r'([^"]*)"(?:\s*\+\s*"([^"]*)")*', tail[:4000]):
+                excluded += seg.group(0)
+                break
+            excluded = "".join(re.findall(r'[\w.]+AutoConfiguration', tail[:2000]))
+        if "DataSourceAutoConfiguration" not in excluded:
+            problems.append(f"{mod}: does not exclude DataSourceAutoConfiguration -- "
+                            f"builds a datasource its messaging tests do not use")
+        if re.search(r"@\S*EnableAutoConfiguration\s*\(\s*exclude", src):
+            problems.append(f"{mod}: exclusions on the class leak into other tests -- use `properties`")
+    check("MESSAGING-CONTEXT",
+          "messaging contract bases stay minimal and keep exclusions in properties",
+          not problems,
+          f"{len(problems)}: " + "; ".join(problems[:4]))
+
+
+def check_spring_boot_config_ambiguity():
+    """No @SpringBootTest that omits `classes=` may resolve to a package holding two configurations.
+
+    Spring's search starts at the test's own package and walks UP, stopping at the first package
+    containing a @SpringBootConfiguration; two in that package is a hard
+    "Found multiple @SpringBootConfiguration annotated classes".
+
+    Counting configurations per module is NOT the invariant and produces false alarms: on
+    2026-08-27 CustomerApplication had six and was safe, while a crude count flagged five modules
+    that were fine because their extra configurations sat in DEEPER packages than any test relying
+    on the search. What matters is where the search lands.
+
+    Modelled against the real failure: reintroducing a second configuration in
+    com.fooddelivery.ledger (the package holding both LedgerApplication and MockRequestTest) is
+    detected here and fails in Spring with the same two classes named. That is the shape that took
+    out six modules on 2026-08-26.
+    """
+    config = re.compile(r"@(?:org\.springframework\.boot\.)?(?:SpringBootConfiguration|SpringBootApplication)\b")
+    test_ann = re.compile(r"@(?:org\.springframework\.boot\.test\.context\.)?SpringBootTest\b")
+    classes_attr = re.compile(r"@(?:org\.springframework\.boot\.test\.context\.)?SpringBootTest\s*\(([^)]*)", re.S)
+    package_of = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.M)
+
+    def uncommented(path):
+        src = read(path)
+        src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+        return re.sub(r"//[^\n]*", "", src)
+
+    problems = []
+    for mod_dir in sorted(d for d in ROOT.iterdir() if (d / "src/test").is_dir()):
+        candidates = {}
+        for area in ("src/main", "src/test"):
+            for f in mod_dir.glob(f"{area}/**/*.java"):
+                src = uncommented(f)
+                if config.search(src):
+                    pkg = package_of.search(src)
+                    candidates.setdefault(pkg.group(1) if pkg else "", []).append(f.name)
+        for f in mod_dir.glob("src/test/**/*.java"):
+            src = uncommented(f)
+            if not test_ann.search(src):
+                continue
+            attr = classes_attr.search(src)
+            if attr and "classes" in attr.group(1):
+                continue
+            pkg_match = package_of.search(src)
+            pkg = pkg_match.group(1) if pkg_match else ""
+            while True:
+                found = candidates.get(pkg, [])
+                if found:
+                    if len(found) > 1:
+                        problems.append(f"{mod_dir.name}: {f.name} resolves in '{pkg}' to {sorted(found)}")
+                    break
+                if "." not in pkg:
+                    break
+                pkg = pkg.rsplit(".", 1)[0]
+
+    check("BOOT-CONFIG-AMBIGUITY",
+          "no test relying on the configuration search resolves to two candidates",
+          not problems,
+          f"{len(problems)} ambiguous: " + "; ".join(problems[:4]))
+
+
 def check_contract_stub_cycles():
     """INFORMATIONAL. Reports mutual contract-stub dependencies; never fails the build.
 
@@ -1011,7 +1274,8 @@ def run():
     for fn in (check_i1, check_orphan_annotations, check_authz, check_i3, check_i4, check_i5, check_i8, check_i9,
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
-               check_i35, check_i36, check_i37, check_contract_stub_cycles, check_schema_strictness_ratchet,
+               check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
+               check_messaging_context_minimal, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
                check_spec_matches_controllers, check_g10):
         try:
             fn()
