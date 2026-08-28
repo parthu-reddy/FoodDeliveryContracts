@@ -24,8 +24,23 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 MVN_FLAGS="-B -o -Dnet.bytebuddy.experimental=true"
 
+# BOTH passes run in parallel. Measured 2026-08-28 on a 10-core machine:
+#   serial    pass 1 123s + pass 2 ~23 min  = ~25 min
+#   -T 1C     pass 1  76s + pass 2   385s   =  7.7 min, 24/24 modules, 340 tests, 0 failures
+# 340 tests in both, so nothing is being skipped to buy the speed.
+#
+# Parallelising pass 2 required removing shared stub ports first. Stub runners bind TCP ports, which
+# no pom declares, so Maven cannot know two modules want the same one -- 8090, 8091, 8092 and 8094
+# were each claimed by 2-4 modules and raced under -T with "BindException: Address already in use".
+#
+# THE INVARIANT IS: no two modules may bind the same port. Fixed ports are fine when unique.
+# Most consumers now omit the port entirely and resolve the stub by service id, which only works for
+# a @FeignClient WITHOUT an explicit `url`. BudgetLimitingService's CampaignClient does set one, so
+# it bypasses discovery and keeps a pinned 8095 -- see the note in its application-contract-test.yml.
+# Before adding a stub runner anywhere, check the port is unused:
+#   grep -rnE ':\+:stubs:[0-9]+|localhost:80[0-9][0-9]' */src/test
 echo "==> Pass 1/2: publishing all artifacts (jars, test-jars, stub jars)"
-if ! mvn $MVN_FLAGS clean install -DskipTests; then
+if ! mvn $MVN_FLAGS clean install -DskipTests -T 1C; then
   echo "FAIL: pass 1 could not publish artifacts"; exit 1
 fi
 
@@ -49,7 +64,7 @@ sys.exit(1 if bad else 0)
 PY
 
 echo "==> Pass 2/2: running every test against the freshly published artifacts"
-mvn $MVN_FLAGS clean test -fae
+mvn $MVN_FLAGS test -fae -T 1C
 STATUS=$?
 
 echo "==> Confirming the generated contract tests actually ran"

@@ -375,15 +375,19 @@ def check_i17():
 
 
 # ---------------------------------------------------------------- I-18
+# These check the CONTENT of .github/workflows/ci-cd.yml, not that any CI runs. It cannot run: the
+# workspace root is not a git repository, and each job's bare `actions/checkout` would fetch one of
+# 31 separate repos. See the header in that file. Naming them "CI does ..." implied an enforcement
+# that does not exist.
 def check_i18():
-    check("I-18a", "a root aggregator pom exists for the CI build step",
+    check("I-18a", "a root aggregator pom exists for the CI build step (workflow is aspirational)",
           (ROOT / "pom.xml").exists(),
           "no pom.xml at the repository root, but ci-cd.yml runs `mvn clean install` there")
     wf = ROOT / ".github/workflows/ci-cd.yml"
     src = read(wf) if wf.exists() else ""
-    check("I-18b", "CI does not reference Testcontainers", "estcontainer" not in src,
+    check("I-18b", "the CI workflow text does not reference Testcontainers", "estcontainer" not in src,
           "ci-cd.yml provisions docker:dind for Testcontainers, which are forbidden by project rule")
-    check("I-18c", "CI builds the frontend", "setup-node" in src or "npm ci" in src,
+    check("I-18c", "the CI workflow text includes a frontend step", "setup-node" in src or "npm ci" in src,
           "no Node step in ci-cd.yml; vitest, msw and pacts never run")
 
 
@@ -960,7 +964,12 @@ def check_scheduled_jobs_classified():
     unmarked = []
     for f in sorted(ROOT.glob("*/src/main/**/*.java")):
         src = read(f)
-        if "@Scheduled" not in re.sub(r"//[^\n]*", "", src):
+        # Strip BOTH comment forms before deciding the file has a @Scheduled. Stripping only "//"
+        # was not enough: on 2026-08-28 a javadoc on FeignSecurityInterceptor that mentioned
+        # "{@code @Scheduled}" while explaining why background calls need an identity was reported as
+        # an unclassified scheduled class. The marker lookup below still reads the ORIGINAL source,
+        # because the classification itself lives in a javadoc.
+        if "@Scheduled" not in re.sub(r"//[^\n]*|/\*.*?\*/", "", src, flags=re.S):
             continue
         decl = re.search(r"^(?:public\s+)?(?:final\s+)?class\s+" + re.escape(f.stem) + r"\b", src, re.M)
         classified = False
