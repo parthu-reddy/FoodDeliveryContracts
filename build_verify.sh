@@ -54,4 +54,46 @@ STATUS=$?
 
 echo "==> Confirming the generated contract tests actually ran"
 echo "    (a non-clean run silently skips them; this is the check that catches that)"
+
+# This was a stub until 2026-08-28: it printed the line above and exited, verifying nothing.
+# It now compares the contract test classes Spring Cloud Contract GENERATED against the ones
+# surefire actually REPORTED, per module. A generated class with no surefire report is a test that
+# was compiled and then silently not run, which is exactly the non-clean-build failure mode.
+python3 - <<'PYCHECK'
+import sys
+from pathlib import Path
+
+generated, executed = {}, {}
+for f in Path('.').glob('*/target/generated-test-sources/contracts/**/*Test.java'):
+    generated.setdefault(f.parts[0], set()).add(f.stem)
+for r in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+    executed.setdefault(r.parts[0], set()).add(r.stem.replace('TEST-', '').split('.')[-1])
+
+if not generated:
+    print("    FAIL: no generated contract tests found at all. Contract generation did not run.")
+    sys.exit(1)
+
+missing, total_gen, total_ran = [], 0, 0
+for mod in sorted(generated):
+    g = generated[mod]
+    hit = g & executed.get(mod, set())
+    total_gen += len(g)
+    total_ran += len(hit)
+    for cls in sorted(g - hit):
+        missing.append(f"{mod}: {cls}")
+
+if missing:
+    print(f"    FAIL: {len(missing)} generated contract test(s) were never executed:")
+    for m in missing:
+        print(f"           {m}")
+    print("    A clean build regenerates and runs these; a non-clean one compiles and skips them.")
+    sys.exit(1)
+
+print(f"    OK: {total_ran}/{total_gen} generated contract tests executed across {len(generated)} modules")
+PYCHECK
+CONTRACT_STATUS=$?
+if [ $CONTRACT_STATUS -ne 0 ]; then
+  exit $CONTRACT_STATUS
+fi
+
 exit $STATUS
