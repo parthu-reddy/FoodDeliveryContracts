@@ -230,6 +230,14 @@ jobs:
           distribution: temurin
           cache: maven
 
+      # Every module declares an EMPTY <relativePath/>, so the parent is resolved from the artifact
+      # repository rather than a sibling directory -- deliberate, so each repo can build alone. On a
+      # developer machine food-delivery-parent is already in ~/.m2 from earlier builds; on a clean
+      # runner it is absent and Maven cannot even read the reactor. Install it first, non-recursively.
+      - name: Install the parent POM
+        working-directory: workspace
+        run: mvn -q -B -N -f FoodDeliveryParent/pom.xml install
+
       # The gate, not a bare `mvn install`: build_verify.sh runs two passes so contract stubs from
       # mutually-dependent modules exist, and it verifies the generated contract tests actually ran.
       - name: Reactor build and gates
