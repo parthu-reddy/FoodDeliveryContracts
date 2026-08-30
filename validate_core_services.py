@@ -1095,6 +1095,64 @@ def check_modifying_queries_are_transactional():
           f"{len(problems)}: " + "; ".join(problems[:4]))
 
 
+def check_query_parameters_are_bound():
+    """Every named parameter in a `@Query` is supplied by the method it annotates.
+
+    A Java annotation binds to the NEXT declaration. Insert a method between an `@Query` and the
+    method it was written for -- a javadoc block in between makes this easy to miss -- and the
+    annotation silently reattaches to the new method, which does not have its parameters.
+
+    Happened on 2026-08-29: `findByStatusAndUpdatedAtBefore` was added directly beneath a
+    `@Query(... :minTime ...)` belonging to `findByStatusAndCreatedAtBetween`. The module compiled,
+    the Spring context started, and `RefundRetrySweeper` then threw
+    `QueryParameterException: No argument for named parameter ':minTime'` every 5 minutes in
+    production. Nothing local caught it: Spring Data does not validate the binding at bootstrap, and
+    no repository here is exercised against a real database.
+    """
+    problems = []
+    for f in sorted(ROOT.glob("*/src/main/**/*Repository*.java")):
+        lines = read(f).splitlines()
+        i = 0
+        while i < len(lines):
+            if not lines[i].strip().startswith("@Query"):
+                i += 1
+                continue
+            ann, depth, j = "", 0, i
+            while j < len(lines):
+                ann += lines[j]
+                depth += lines[j].count("(") - lines[j].count(")")
+                j += 1
+                if depth <= 0 and "(" in ann:
+                    break
+            params = set(re.findall(r":(\w+)", ann))
+            sig, k = None, j
+            while k < len(lines):
+                t = lines[k].strip()
+                if not t or t.startswith(("*", "/*", "//", "@")):
+                    k += 1
+                    continue
+                sig = t
+                while sig.count("(") > sig.count(")") and k + 1 < len(lines):
+                    k += 1
+                    sig += lines[k].strip()
+                break
+            if sig:
+                bound = set(re.findall(r'@Param\(\s*"(\w+)"', sig))
+                names = set(re.findall(r"\b(\w+)\s*[,)]", sig))
+                missing = sorted(p for p in params if p not in bound and p not in names)
+                if missing:
+                    method = re.search(r"(\w+)\s*\(", sig)
+                    problems.append(
+                        f"{f.relative_to(ROOT)}: @Query needs {missing} but "
+                        f"{method.group(1) if method else sig[:30]} does not supply "
+                        f"{'it' if len(missing) == 1 else 'them'}")
+            i = k + 1 if sig else j
+    check("QUERY-PARAMS-BOUND",
+          "every @Query named parameter is supplied by the method it annotates",
+          not problems,
+          f"{len(problems)}: " + "; ".join(problems[:3]))
+
+
 def check_messaging_context_minimal():
     """Messaging contract bases stay minimal, and keep their exclusions in `properties`.
 
@@ -1336,7 +1394,7 @@ def run():
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
                check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
-               check_messaging_context_minimal, check_modifying_queries_are_transactional, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
+               check_messaging_context_minimal, check_modifying_queries_are_transactional, check_query_parameters_are_bound, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
                check_spec_matches_controllers, check_g10):
         try:
             fn()
