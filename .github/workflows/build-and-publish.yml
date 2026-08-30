@@ -242,6 +242,10 @@ jobs:
       # mutually-dependent modules exist, and it verifies the generated contract tests actually ran.
       - name: Reactor build and gates
         working-directory: workspace
+        env:
+          # build_verify.sh defaults to `mvn -o`. A runner has a cold ~/.m2 and cannot be offline
+          # with nothing cached, so downloads are enabled here. Local runs stay offline.
+          MVN_OFFLINE: ""
         run: bash FoodDeliveryContracts/build_verify.sh
 
       - name: Static validators

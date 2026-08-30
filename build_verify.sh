@@ -22,7 +22,12 @@
 #     `test` phase never produces.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-MVN_FLAGS="-B -o -Dnet.bytebuddy.experimental=true"
+# Offline by default: locally ~/.m2 is fully populated, and -o keeps the build fast and
+# deterministic. A clean machine has nothing to be offline WITH -- it cannot resolve even
+# spring-boot-starter-parent -- so CI sets MVN_OFFLINE="" to allow downloads. Overriding this is
+# the only supported way to run on a cold cache; do not drop the -o for local runs.
+MVN_OFFLINE="${MVN_OFFLINE--o}"
+MVN_FLAGS="-B $MVN_OFFLINE -Dnet.bytebuddy.experimental=true"
 
 # BOTH passes run in parallel. Measured 2026-08-28 on a 10-core machine:
 #   serial    pass 1 123s + pass 2 ~23 min  = ~25 min
