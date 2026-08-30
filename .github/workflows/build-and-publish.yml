@@ -262,7 +262,10 @@ jobs:
       # exactly what validate_core_services.py's I-18c asserts.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Read from FoodDeliveryAppUI/.nvmrc so CI and developer machines cannot drift. Pinning a
+          # literal here is what broke run 5: the runner got Node 20 while local is 24, and
+          # undici 8.10.0 calls webidl.util.markAsUncloneable, which Node 20 does not provide.
+          node-version-file: 'workspace/FoodDeliveryAppUI/.nvmrc'
           cache: npm
           cache-dependency-path: workspace/FoodDeliveryAppUI/package-lock.json
 
