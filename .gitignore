@@ -1,0 +1,5 @@
+
+# Untracked 2026-08-30: generated/editor artefacts that should never be committed
+*.pyc
+.DS_Store
+__pycache__/
