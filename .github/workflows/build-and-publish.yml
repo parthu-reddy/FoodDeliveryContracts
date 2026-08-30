@@ -1,0 +1,269 @@
+# Build the reactor and publish images to OCIR.
+#
+# WHY THIS LIVES HERE: the workspace root is deliberately not a git repository, so the aggregator
+# pom that defines the reactor is unversioned and no runner can reconstruct it. A copy is kept at
+# ci/root-pom.xml and placed at the assembled root below; validate_core_services.py fails if the
+# two ever diverge.
+#
+# WHY 26 CHECKOUTS: the code lives in separate repositories. Directory names and repo names
+# differ in five cases (CommonLibrary -> FoodDeliveryCommonLibrary, RestaurantApplication ->
+# RestaurentApplication, ...), so the list is generated from ci/repo-map.tsv, never derived.
+#
+# SECRETS REQUIRED
+#   CHECKOUT_TOKEN  fine-grained PAT, read-only Contents, on all repos in ci/repo-map.tsv.
+#                   The automatic GITHUB_TOKEN is scoped to this repo only and cannot check out
+#                   the others.
+#   OCIR_USERNAME   axekmbadoczl/<publisher-user>
+#   OCIR_TOKEN      auth token for that user (needs manage repos -- OCIR auto-creates on first push)
+name: build-and-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      services:
+        description: "Space-separated compose services to publish, or 'all'"
+        required: true
+        default: "customer-service"
+  repository_dispatch:
+    types: [module-pushed]
+
+env:
+  REGISTRY: hyd.ocir.io/axekmbadoczl
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: FoodDeliveryContracts
+        uses: actions/checkout@v4
+        with:
+          path: workspace/FoodDeliveryContracts
+
+      - name: FoodDeliveryParent
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/FoodDeliveryParentPOM
+          path: workspace/FoodDeliveryParent
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: IdentitySigning
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/IdentitySigning
+          path: workspace/IdentitySigning
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: CommonLibrary
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/FoodDeliveryCommonLibrary
+          path: workspace/CommonLibrary
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: EurekaServer
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/EurekaServer
+          path: workspace/EurekaServer
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: ConfigService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/ConfigService
+          path: workspace/ConfigService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: ApiGateway
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/ApiGateway
+          path: workspace/ApiGateway
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: IdentityService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/IdentityService
+          path: workspace/IdentityService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: CommunicationIntegration
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/NotificationService
+          path: workspace/CommunicationIntegration
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: CustomerApplication
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/CustomerApplication
+          path: workspace/CustomerApplication
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: DeliveryExecutiveApplication
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/DeliveryExecutiveApplication
+          path: workspace/DeliveryExecutiveApplication
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: MapsIntegration
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/MapsIntegration
+          path: workspace/MapsIntegration
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: PaymentGatewayIntegration
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/PaymentService
+          path: workspace/PaymentGatewayIntegration
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: RestaurantApplication
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/RestaurentApplication
+          path: workspace/RestaurantApplication
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: GovernmentIDValidationService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/GovernmentIDValidationService
+          path: workspace/GovernmentIDValidationService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: LedgerService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/LedgerService
+          path: workspace/LedgerService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: CommunicationService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/CommunicationService
+          path: workspace/CommunicationService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: ONDCIntegrationService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/ONDCIntegrationService
+          path: workspace/ONDCIntegrationService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: WalletService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/WalletService
+          path: workspace/WalletService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: BudgetLimitingService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/BudgetLimitingService
+          path: workspace/BudgetLimitingService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: BiddingEngine
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/BiddingEngine
+          path: workspace/BiddingEngine
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: CampaignService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/CampaignService
+          path: workspace/CampaignService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: UserTrackingService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/UserTrackingService
+          path: workspace/UserTrackingService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: ReviewsService
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/ReviewsService
+          path: workspace/ReviewsService
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: FoodDeliveryContracts
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/FoodDeliveryContracts
+          path: workspace/FoodDeliveryContracts
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: Deployment
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/Deployment
+          path: workspace/Deployment
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: FoodDeliveryAppUI
+        uses: actions/checkout@v4
+        with:
+          repository: parthu-reddy/FoodDeliveryAppUI
+          path: workspace/FoodDeliveryAppUI
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
+      - name: Place the aggregator pom
+        run: cp workspace/FoodDeliveryContracts/ci/root-pom.xml workspace/pom.xml
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+          cache: maven
+
+      # The gate, not a bare `mvn install`: build_verify.sh runs two passes so contract stubs from
+      # mutually-dependent modules exist, and it verifies the generated contract tests actually ran.
+      - name: Reactor build and gates
+        working-directory: workspace
+        run: bash FoodDeliveryContracts/build_verify.sh
+
+      - name: Static validators
+        working-directory: workspace
+        run: python3 FoodDeliveryContracts/validate_core_services.py
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to OCIR
+        uses: docker/login-action@v3
+        with:
+          registry: hyd.ocir.io
+          username: ${{ secrets.OCIR_USERNAME }}
+          password: ${{ secrets.OCIR_TOKEN }}
+
+      # Tags come from each module's own commit sha. A runner can only build from pushed commits,
+      # so the '-dirty' suffix publish.sh emits locally is structurally impossible here.
+      - name: Publish images
+        working-directory: workspace
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+        run: |
+          SERVICES="${{ github.event.inputs.services || 'customer-service' }}"
+          if [ "$SERVICES" = "all" ]; then
+            SERVICES=$(awk -F'\t' '!/^#/ && NF==2 {print $2}' Deployment/service-map.tsv | tr '\n' ' ')
+          fi
+          bash Deployment/publish.sh $SERVICES
+
+      - name: Upload .versions
+        uses: actions/upload-artifact@v4
+        with:
+          name: versions
+          path: workspace/Deployment/.versions

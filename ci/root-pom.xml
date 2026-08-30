@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.fooddelivery</groupId>
+    <artifactId>food-delivery-aggregator</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    
+    <name>Food Delivery Aggregator</name>
+    <description>Root Maven aggregator for all Food Delivery microservices</description>
+    
+    <modules>
+        <module>FoodDeliveryParent</module>
+        <module>IdentitySigning</module>
+        <module>CommonLibrary</module>
+        <module>EurekaServer</module>
+        <module>ConfigService</module>
+        <module>ApiGateway</module>
+        <module>IdentityService</module>
+        <module>CommunicationIntegration</module>
+        <module>CustomerApplication</module>
+        <module>DeliveryExecutiveApplication</module>
+        <module>MapsIntegration</module>
+        <module>PaymentGatewayIntegration</module>
+        <module>RestaurantApplication</module>
+        <module>GovernmentIDValidationService</module>
+        <module>LedgerService</module>
+        <module>CommunicationService</module>
+        <module>ONDCIntegrationService</module>
+        <module>WalletService</module>
+        <module>BudgetLimitingService</module>
+        <module>BiddingEngine</module>
+        <module>CampaignService</module>
+        <module>UserTrackingService</module>
+        <module>ReviewsService</module>
+    </modules>
+</project>

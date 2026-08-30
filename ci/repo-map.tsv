@@ -1,0 +1,29 @@
+# directory	github-repo
+# The reactor is assembled from these. Directory names and repo names DIFFER in
+# several cases, so CI must read this file rather than derive the name.
+FoodDeliveryParent	parthu-reddy/FoodDeliveryParentPOM
+IdentitySigning	parthu-reddy/IdentitySigning
+CommonLibrary	parthu-reddy/FoodDeliveryCommonLibrary
+EurekaServer	parthu-reddy/EurekaServer
+ConfigService	parthu-reddy/ConfigService
+ApiGateway	parthu-reddy/ApiGateway
+IdentityService	parthu-reddy/IdentityService
+CommunicationIntegration	parthu-reddy/NotificationService
+CustomerApplication	parthu-reddy/CustomerApplication
+DeliveryExecutiveApplication	parthu-reddy/DeliveryExecutiveApplication
+MapsIntegration	parthu-reddy/MapsIntegration
+PaymentGatewayIntegration	parthu-reddy/PaymentService
+RestaurantApplication	parthu-reddy/RestaurentApplication
+GovernmentIDValidationService	parthu-reddy/GovernmentIDValidationService
+LedgerService	parthu-reddy/LedgerService
+CommunicationService	parthu-reddy/CommunicationService
+ONDCIntegrationService	parthu-reddy/ONDCIntegrationService
+WalletService	parthu-reddy/WalletService
+BudgetLimitingService	parthu-reddy/BudgetLimitingService
+BiddingEngine	parthu-reddy/BiddingEngine
+CampaignService	parthu-reddy/CampaignService
+UserTrackingService	parthu-reddy/UserTrackingService
+ReviewsService	parthu-reddy/ReviewsService
+FoodDeliveryContracts	parthu-reddy/FoodDeliveryContracts
+Deployment	parthu-reddy/Deployment
+FoodDeliveryAppUI	parthu-reddy/FoodDeliveryAppUI

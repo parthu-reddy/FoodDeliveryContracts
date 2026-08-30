@@ -1153,6 +1153,41 @@ def check_query_parameters_are_bound():
           f"{len(problems)}: " + "; ".join(problems[:3]))
 
 
+def check_ci_root_pom_matches():
+    """The CI copy of the aggregator pom matches the real one.
+
+    The workspace root is deliberately not a git repository, so the pom that defines the 23-module
+    reactor is unversioned and exists only on a developer machine. CI cannot reconstruct it, so a
+    copy lives at FoodDeliveryContracts/ci/root-pom.xml and is placed at the assembled root.
+
+    If the two diverge, CI silently builds a DIFFERENT reactor than the one tested locally -- fewer
+    modules, or a stale module list -- and reports success. That is the failure this catches.
+    """
+    real = ROOT / "pom.xml"
+    copy = ROOT / "FoodDeliveryContracts/ci/root-pom.xml"
+    if not real.is_file():
+        check("CI-ROOT-POM", "the CI copy of the aggregator pom matches the real one",
+              False, f"{real} not found -- the reactor root is missing")
+        return
+    if not copy.is_file():
+        check("CI-ROOT-POM", "the CI copy of the aggregator pom matches the real one",
+              False, f"{copy} not found -- CI cannot assemble the reactor without it")
+        return
+    a, b = read(real), read(copy)
+    if a == b:
+        check("CI-ROOT-POM", "the CI copy of the aggregator pom matches the real one", True)
+        return
+    ma = set(re.findall(r"<module>([^<]+)</module>", a))
+    mb = set(re.findall(r"<module>([^<]+)</module>", b))
+    detail = "content differs"
+    if ma - mb:
+        detail = f"CI copy is MISSING modules: {sorted(ma - mb)}"
+    elif mb - ma:
+        detail = f"CI copy has EXTRA modules: {sorted(mb - ma)}"
+    check("CI-ROOT-POM", "the CI copy of the aggregator pom matches the real one", False,
+          detail + " -- run: cp pom.xml FoodDeliveryContracts/ci/root-pom.xml")
+
+
 def check_messaging_context_minimal():
     """Messaging contract bases stay minimal, and keep their exclusions in `properties`.
 
@@ -1394,7 +1429,7 @@ def run():
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
                check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
-               check_messaging_context_minimal, check_modifying_queries_are_transactional, check_query_parameters_are_bound, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
+               check_messaging_context_minimal, check_modifying_queries_are_transactional, check_ci_root_pom_matches, check_query_parameters_are_bound, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
                check_spec_matches_controllers, check_g10):
         try:
             fn()
