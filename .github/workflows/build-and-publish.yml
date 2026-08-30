@@ -317,7 +317,11 @@ jobs:
         run: |
           SERVICES="${{ github.event.inputs.services || 'customer-service' }}"
           if [ "$SERVICES" = "all" ]; then
-            SERVICES=$(awk -F'\t' '!/^#/ && NF==2 {print $2}' Deployment/service-map.tsv | tr '\n' ' ')
+            # NF>=2, not NF==2: the map gained build-context and dockerfile columns, and an exact
+            # match silently expanded to an EMPTY list -- publish.sh then printed its usage and the
+            # run failed having pushed nothing.
+            SERVICES=$(awk -F'\t' '!/^#/ && NF>=2 {print $2}' Deployment/service-map.tsv | tr '\n' ' ')
+            [ -n "$SERVICES" ] || { echo "no services resolved from service-map.tsv"; exit 1; }
           fi
           bash Deployment/publish.sh $SERVICES
 
