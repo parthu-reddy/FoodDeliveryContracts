@@ -383,7 +383,10 @@ def check_i18():
     check("I-18a", "a root aggregator pom exists for the CI build step (workflow is aspirational)",
           (ROOT / "pom.xml").exists(),
           "no pom.xml at the repository root, but ci-cd.yml runs `mvn clean install` there")
-    wf = ROOT / ".github/workflows/ci-cd.yml"
+    # Read the workflow that can actually RUN. ci-cd.yml at the workspace root never could -- the
+    # root is not a git repository, so GitHub never saw it -- and on a CI runner it does not exist
+    # at all, which made I-18c fail against an empty string. Superseded 2026-08-30.
+    wf = ROOT / "FoodDeliveryContracts/.github/workflows/build-and-publish.yml"
     src = read(wf) if wf.exists() else ""
     check("I-18b", "the CI workflow text does not reference Testcontainers", "estcontainer" not in src,
           "ci-cd.yml provisions docker:dind for Testcontainers, which are forbidden by project rule")

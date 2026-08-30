@@ -252,6 +252,24 @@ jobs:
         working-directory: workspace
         run: python3 FoodDeliveryContracts/validate_core_services.py
 
+      # The UI has its own gates and they are not covered by the Maven reactor. Without this,
+      # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
+      # exactly what validate_core_services.py's I-18c asserts.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: workspace/FoodDeliveryAppUI/package-lock.json
+
+      - name: Frontend gates
+        working-directory: workspace/FoodDeliveryAppUI
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm run test
+          npm run build
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Log in to OCIR
