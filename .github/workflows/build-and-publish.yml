@@ -221,6 +221,20 @@ jobs:
           path: workspace/FoodDeliveryAppUI
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
+      # ubuntu-latest starts with ~14 GB free. This job wants far more: 26 checkouts, a Maven
+      # reactor whose ~/.m2 alone is 2.6 GB, node_modules, and 20 Docker images built locally
+      # before being pushed. Publishing one service fit; twenty did not -- the runner filled up,
+      # `jarmode extract` failed mid-build, and the runner then crashed writing its OWN log
+      # ("No space left on device"), which is why the log archive came back empty.
+      #
+      # Android SDK, .NET and GHC are preinstalled and unused here.
+      - name: Free runner disk
+        run: |
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+                      /opt/hostedtoolcache/CodeQL || true
+          echo "after:";  df -h / | tail -1
+
       - name: Place the aggregator pom
         run: cp workspace/FoodDeliveryContracts/ci/root-pom.xml workspace/pom.xml
 
