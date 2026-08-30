@@ -229,6 +229,11 @@ jobs:
           java-version: '17'
           distribution: temurin
           cache: maven
+          # Without this the cache is silently DISABLED: setup-java keys the cache on pom.xml files
+          # found in the repo root, and this repo has none -- every module pom lives under
+          # workspace/. Measured 2026-08-30: no cache entry was ever stored, so all four runs
+          # re-downloaded every dependency and the reactor step took 15 minutes.
+          cache-dependency-path: 'workspace/**/pom.xml'
 
       # Every module declares an EMPTY <relativePath/>, so the parent is resolved from the artifact
       # repository rather than a sibling directory -- deliberate, so each repo can build alone. On a
