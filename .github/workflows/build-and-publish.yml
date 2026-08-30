@@ -35,187 +35,187 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: FoodDeliveryContracts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: workspace/FoodDeliveryContracts
 
       - name: FoodDeliveryParent
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/FoodDeliveryParentPOM
           path: workspace/FoodDeliveryParent
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: IdentitySigning
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/IdentitySigning
           path: workspace/IdentitySigning
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: CommonLibrary
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/FoodDeliveryCommonLibrary
           path: workspace/CommonLibrary
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: EurekaServer
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/EurekaServer
           path: workspace/EurekaServer
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: ConfigService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/ConfigService
           path: workspace/ConfigService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: ApiGateway
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/ApiGateway
           path: workspace/ApiGateway
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: IdentityService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/IdentityService
           path: workspace/IdentityService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: CommunicationIntegration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/NotificationService
           path: workspace/CommunicationIntegration
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: CustomerApplication
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/CustomerApplication
           path: workspace/CustomerApplication
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: DeliveryExecutiveApplication
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/DeliveryExecutiveApplication
           path: workspace/DeliveryExecutiveApplication
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: MapsIntegration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/MapsIntegration
           path: workspace/MapsIntegration
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: PaymentGatewayIntegration
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/PaymentService
           path: workspace/PaymentGatewayIntegration
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: RestaurantApplication
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/RestaurentApplication
           path: workspace/RestaurantApplication
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: GovernmentIDValidationService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/GovernmentIDValidationService
           path: workspace/GovernmentIDValidationService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: LedgerService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/LedgerService
           path: workspace/LedgerService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: CommunicationService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/CommunicationService
           path: workspace/CommunicationService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: ONDCIntegrationService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/ONDCIntegrationService
           path: workspace/ONDCIntegrationService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: WalletService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/WalletService
           path: workspace/WalletService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: BudgetLimitingService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/BudgetLimitingService
           path: workspace/BudgetLimitingService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: BiddingEngine
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/BiddingEngine
           path: workspace/BiddingEngine
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: CampaignService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/CampaignService
           path: workspace/CampaignService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: UserTrackingService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/UserTrackingService
           path: workspace/UserTrackingService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: ReviewsService
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/ReviewsService
           path: workspace/ReviewsService
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: FoodDeliveryContracts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/FoodDeliveryContracts
           path: workspace/FoodDeliveryContracts
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: Deployment
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/Deployment
           path: workspace/Deployment
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
       - name: FoodDeliveryAppUI
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: parthu-reddy/FoodDeliveryAppUI
           path: workspace/FoodDeliveryAppUI
@@ -224,7 +224,7 @@ jobs:
       - name: Place the aggregator pom
         run: cp workspace/FoodDeliveryContracts/ci/root-pom.xml workspace/pom.xml
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: temurin
@@ -260,7 +260,7 @@ jobs:
       # The UI has its own gates and they are not covered by the Maven reactor. Without this,
       # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
       # exactly what validate_core_services.py's I-18c asserts.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           # Read from FoodDeliveryAppUI/.nvmrc so CI and developer machines cannot drift. Pinning a
           # literal here is what broke run 5: the runner got Node 20 while local is 24, and
@@ -301,7 +301,10 @@ jobs:
           bash Deployment/publish.sh $SERVICES
 
       - name: Upload .versions
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: versions
           path: workspace/Deployment/.versions
+          # .versions is a dotfile, and upload-artifact skips hidden files by default -- which is
+          # why run 6 reported "No files were found" for a file publish.sh had just written.
+          include-hidden-files: true
