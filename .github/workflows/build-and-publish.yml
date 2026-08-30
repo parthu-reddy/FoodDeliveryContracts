@@ -243,19 +243,38 @@ jobs:
         working-directory: workspace
         run: mvn -q -B -N -f FoodDeliveryParent/pom.xml install
 
-      # The gate, not a bare `mvn install`: build_verify.sh runs two passes so contract stubs from
-      # mutually-dependent modules exist, and it verifies the generated contract tests actually ran.
-      - name: Reactor build and gates
+      # ---------------------------------------------------------------------------------------
+      # TESTS DISABLED 2026-08-30, temporarily, at the owner's request.
+      #
+      # Measured: the full gate is 15m26s of compute even with a warm Maven cache, and caching
+      # only saves 1m34s. This workflow now BUILDS ONLY, so an image is available in a few
+      # minutes instead of ~18.
+      #
+      # WHAT THIS GIVES UP: build_verify.sh is not `mvn install` with extra steps. It runs two
+      # passes so mutually-dependent modules can resolve each other's contract stubs, checks that
+      # every published stub jar actually CONTAINS stubs, and confirms the generated contract
+      # tests really executed. None of that runs below. An image published by this workflow is
+      # compiled, not verified.
+      #
+      # Until this is restored, run the gate locally before trusting a published tag:
+      #     bash FoodDeliveryContracts/build_verify.sh
+      #     python3 FoodDeliveryContracts/validate_core_services.py
+      #
+      # To restore: delete the build-only step and uncomment the two steps beneath it.
+      # ---------------------------------------------------------------------------------------
+      - name: Build artifacts (TESTS SKIPPED)
         working-directory: workspace
-        env:
-          # build_verify.sh defaults to `mvn -o`. A runner has a cold ~/.m2 and cannot be offline
-          # with nothing cached, so downloads are enabled here. Local runs stay offline.
-          MVN_OFFLINE: ""
-        run: bash FoodDeliveryContracts/build_verify.sh
+        run: mvn -B clean install -DskipTests -T 1C
 
-      - name: Static validators
-        working-directory: workspace
-        run: python3 FoodDeliveryContracts/validate_core_services.py
+      # - name: Reactor build and gates
+      #   working-directory: workspace
+      #   env:
+      #     MVN_OFFLINE: ""
+      #   run: bash FoodDeliveryContracts/build_verify.sh
+      #
+      # - name: Static validators
+      #   working-directory: workspace
+      #   run: python3 FoodDeliveryContracts/validate_core_services.py
 
       # The UI has its own gates and they are not covered by the Maven reactor. Without this,
       # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
@@ -269,14 +288,16 @@ jobs:
           cache: npm
           cache-dependency-path: workspace/FoodDeliveryAppUI/package-lock.json
 
-      - name: Frontend gates
+      # Build only -- typecheck, lint and vitest are disabled with the backend gates above.
+      # `npm run build` stays: the UI image needs dist/, so this is a build step, not a gate.
+      - name: Frontend build (GATES SKIPPED)
         working-directory: workspace/FoodDeliveryAppUI
         run: |
           npm ci
-          npm run typecheck
-          npm run lint
-          npm run test
           npm run build
+      #   npm run typecheck
+      #   npm run lint
+      #   npm run test
 
       - uses: docker/setup-buildx-action@v3
 
