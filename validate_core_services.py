@@ -1043,6 +1043,58 @@ def check_money_not_through_double():
           f"{len(problems)}: " + "; ".join(problems[:4]))
 
 
+def check_modifying_queries_are_transactional():
+    """Every `@Modifying` repository method carries its own `@Transactional`.
+
+    Spring Data gives `@Transactional` to SimpleJpaRepository's CRUD methods, NOT to a custom
+    `@Modifying @Query`. Such a method inherits a transaction only if its caller has one -- so
+    whether it works depends on the call site, and the failure is invisible until runtime.
+
+    Found the hard way on 2026-08-29: OrderQuoteRepository.claim() was called from inside
+    CompletableFuture.supplyAsync, where no caller transaction propagates, and every checkout
+    failed with "No EntityManager with actual transaction available for current thread". The
+    module compiled, 40 unit tests passed, and the reactor was green -- nothing local exercises
+    a repository against a real database, because Testcontainers are not used here.
+
+    The rule is deliberately local: annotate the method rather than reason about every caller.
+    `@Transactional` is REQUIRED by default, so it joins an existing transaction when there is
+    one and opens its own when there is not. Annotating costs nothing and removes the call-site
+    dependency entirely.
+    """
+    problems = []
+    for f in sorted(ROOT.glob("*/src/main/**/*Repository.java")):
+        src = re.sub(r"/\*.*?\*/", "", read(f), flags=re.S)
+        src = re.sub(r"//[^\n]*", "", src)
+        if "@Modifying" not in src:
+            continue
+        # An interface-level @Transactional covers every method in the file.
+        if re.search(r"^\s*@Transactional\b", src.split("interface", 1)[0], re.M):
+            continue
+        pending, depth = [], 0
+        for i, line in enumerate(src.splitlines(), 1):
+            stripped = line.strip()
+            if depth > 0 or stripped.startswith("@"):
+                pending.append(stripped)
+                depth += line.count("(") - line.count(")")
+                if depth < 0:
+                    depth = 0
+                continue
+            if not stripped:
+                continue
+            # first non-annotation line after a run of annotations is the method signature
+            block = " ".join(pending)
+            if "@Modifying" in block and "@Transactional" not in block:
+                name = re.search(r"(\w+)\s*\(", stripped)
+                problems.append(
+                    f"{f.relative_to(ROOT)}:{i} @Modifying "
+                    f"{name.group(1) if name else stripped[:40]} is not @Transactional")
+            pending = []
+    check("MODIFYING-TRANSACTIONAL",
+          "every @Modifying repository query carries its own @Transactional",
+          not problems,
+          f"{len(problems)}: " + "; ".join(problems[:4]))
+
+
 def check_messaging_context_minimal():
     """Messaging contract bases stay minimal, and keep their exclusions in `properties`.
 
@@ -1284,7 +1336,7 @@ def run():
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
                check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
-               check_messaging_context_minimal, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
+               check_messaging_context_minimal, check_modifying_queries_are_transactional, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
                check_spec_matches_controllers, check_g10):
         try:
             fn()
