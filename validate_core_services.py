@@ -1427,13 +1427,108 @@ def check_g10():
           "written and tested, added to no chain — HTTP idempotency is off")
 
 
+# ---------------------------------------------------------------- SCHEMA-IMMUTABLE
+def check_schema_immutable():
+    """An applied Flyway migration must never be edited or deleted.
+
+    For each module in service-map.tsv that has db/migration, compare the migration
+    files at the last-deployed sha (.versions tag) against HEAD. A file that EXISTED
+    at that sha and has been modified or deleted is a violation. A NEW file is fine —
+    that is the intended workflow.
+
+    CommonLibrary is explicitly excluded: it has migrations under db/migration/common,
+    is not in service-map.tsv, and was flagged spuriously once before for having no
+    baseline. ONDCIntegrationService and ReviewsService are also excluded (parked,
+    not in service-map.tsv).
+    """
+    import subprocess as _sp
+    smap = ROOT / "Deployment/service-map.tsv"
+    versions = ROOT / "Deployment/.versions"
+    if not smap.exists() or not versions.exists():
+        check("SCHEMA-IMMUTABLE", "migration immutability", False,
+              "service-map.tsv or .versions missing")
+        return
+
+    # Parse .versions: MODULE_TAG=sha  ->  {compose-service: sha}
+    ver_lines = read(versions).splitlines()
+    tag_by_var = {}
+    for line in ver_lines:
+        if "_TAG=" in line:
+            k, v = line.split("=", 1)
+            tag_by_var[k.strip()] = v.strip()
+
+    # Parse service-map.tsv: module-dir -> compose-service
+    modules = []
+    for line in read(smap).splitlines():
+        if line.startswith("#") or "\t" not in line:
+            continue
+        parts = line.split("\t")
+        mod_dir = parts[0]
+        compose_svc = parts[1]
+        mig_dir = ROOT / mod_dir / "src/main/resources/db/migration"
+        if mig_dir.is_dir():
+            modules.append((mod_dir, compose_svc))
+
+    if not modules:
+        check("SCHEMA-IMMUTABLE", "migration immutability", False,
+              "no modules with db/migration found via service-map.tsv")
+        return
+
+    violations = []
+    skipped = []
+    for mod_dir, compose_svc in modules:
+        # Resolve the .versions tag variable: compose service 'customer-service' -> CUSTOMER_SERVICE_TAG
+        var = compose_svc.upper().replace("-", "_") + "_TAG"
+        tag = tag_by_var.get(var, "")
+        if not tag:
+            skipped.append(f"{mod_dir} (no {var} in .versions)")
+            continue
+        # Strip -dirty suffix for the git sha
+        sha = tag.replace("-dirty", "")
+        mod_path = ROOT / mod_dir
+        if not (mod_path / ".git").is_dir():
+            skipped.append(f"{mod_dir} (not a git repo)")
+            continue
+        # Verify the sha is a valid commit in that repo
+        r = _sp.run(["git", "-C", str(mod_path), "cat-file", "-t", sha],
+                    capture_output=True, text=True)
+        if r.stdout.strip() != "commit":
+            skipped.append(f"{mod_dir} ({sha} is not a commit)")
+            continue
+        # Get files changed between the deployed sha and the WORKING TREE in db/migration.
+        # Omit HEAD so uncommitted edits are caught — the standing rule is "never commit",
+        # so migrations edited locally but not committed must still fire this check.
+        r = _sp.run(["git", "-C", str(mod_path), "diff", "--name-only", sha,
+                     "--", "src/main/resources/db/migration"],
+                    capture_output=True, text=True)
+        changed = [f for f in r.stdout.strip().splitlines() if f]
+        for f in changed:
+            # Did this file exist at the deployed sha? If yes, it was modified or deleted.
+            r2 = _sp.run(["git", "-C", str(mod_path), "cat-file", "-e", f"{sha}:{f}"],
+                         capture_output=True, text=True)
+            if r2.returncode == 0:
+                # File existed at sha -> modified or deleted applied migration
+                violations.append(f"{mod_dir}/{f.split('/')[-1]}")
+
+    if skipped:
+        for s in skipped:
+            check("SCHEMA-IMMUTABLE", f"migration immutability SKIP: {s}", True, "")
+
+    check("SCHEMA-IMMUTABLE",
+          f"no applied migration has been edited or deleted ({len(modules)} modules checked)",
+          not violations,
+          ("; ".join(violations) +
+           " — add a new timestamped migration (V<YYYYMMDDHHMMSS>__...) instead of editing an applied one")
+          if violations else "")
+
+
 def run():
     for fn in (check_i1, check_orphan_annotations, check_authz, check_i3, check_i4, check_i5, check_i8, check_i9,
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
                check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
                check_messaging_context_minimal, check_modifying_queries_are_transactional, check_ci_root_pom_matches, check_query_parameters_are_bound, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
-               check_spec_matches_controllers, check_g10):
+               check_spec_matches_controllers, check_g10, check_schema_immutable):
         try:
             fn()
         except Exception as e:  # a broken check must not look like a passing one

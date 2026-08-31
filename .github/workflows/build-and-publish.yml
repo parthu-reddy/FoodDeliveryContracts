@@ -290,6 +290,11 @@ jobs:
       #   working-directory: workspace
       #   run: python3 FoodDeliveryContracts/validate_core_services.py
 
+      # PARKED 2026-08-31 by the owner. The backend gates above and the UI gates below are
+      # deliberately disabled and are NOT to be re-enabled or re-proposed. Consequence, recorded
+      # so it is not rediscovered as a surprise: this workflow can publish images from code no
+      # gate has seen, so local build_verify.sh and validate_core_services.py are the only check.
+
       # The UI has its own gates and they are not covered by the Maven reactor. Without this,
       # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
       # exactly what validate_core_services.py's I-18c asserts.
