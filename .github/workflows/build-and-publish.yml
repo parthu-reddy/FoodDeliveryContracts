@@ -311,6 +311,8 @@ jobs:
       # `npm run build` stays: the UI image needs dist/, so this is a build step, not a gate.
       - name: Frontend build (GATES SKIPPED)
         working-directory: workspace/FoodDeliveryAppUI
+        env:
+          VITE_ENABLE_DEV_OTP: 'true'
         run: |
           npm ci
           npm run build
