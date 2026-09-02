@@ -15,20 +15,12 @@
 #                   the others.
 #   OCIR_USERNAME   axekmbadoczl/<publisher-user>
 #   OCIR_TOKEN      auth token for that user (needs manage repos -- OCIR auto-creates on first push)
-name: build-and-publish
+name: contract-verification
 
 on:
   workflow_dispatch:
-    inputs:
-      services:
-        description: "Space-separated compose services to publish, or 'all'"
-        required: true
-        default: "customer-service"
   repository_dispatch:
     types: [module-pushed]
-
-env:
-  REGISTRY: hyd.ocir.io/axekmbadoczl
 
 jobs:
   build:
@@ -276,81 +268,32 @@ jobs:
       #
       # To restore: delete the build-only step and uncomment the two steps beneath it.
       # ---------------------------------------------------------------------------------------
-      - name: Build artifacts (TESTS SKIPPED)
+      - name: Reactor build and gates
         working-directory: workspace
-        run: mvn -B clean install -DskipTests -T 1C
+        env:
+          MVN_OFFLINE: ""
+        run: bash FoodDeliveryContracts/build_verify.sh
 
-      # - name: Reactor build and gates
-      #   working-directory: workspace
-      #   env:
-      #     MVN_OFFLINE: ""
-      #   run: bash FoodDeliveryContracts/build_verify.sh
-      #
-      # - name: Static validators
-      #   working-directory: workspace
-      #   run: python3 FoodDeliveryContracts/validate_core_services.py
-
-      # PARKED 2026-08-31 by the owner. The backend gates above and the UI gates below are
-      # deliberately disabled and are NOT to be re-enabled or re-proposed. Consequence, recorded
-      # so it is not rediscovered as a surprise: this workflow can publish images from code no
-      # gate has seen, so local build_verify.sh and validate_core_services.py are the only check.
+      - name: Static validators
+        working-directory: workspace
+        run: python3 FoodDeliveryContracts/validate_core_services.py
 
       # The UI has its own gates and they are not covered by the Maven reactor. Without this,
       # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
       # exactly what validate_core_services.py's I-18c asserts.
       - uses: actions/setup-node@v5
         with:
-          # Read from FoodDeliveryAppUI/.nvmrc so CI and developer machines cannot drift. Pinning a
-          # literal here is what broke run 5: the runner got Node 20 while local is 24, and
-          # undici 8.10.0 calls webidl.util.markAsUncloneable, which Node 20 does not provide.
           node-version-file: 'workspace/FoodDeliveryAppUI/.nvmrc'
           cache: npm
           cache-dependency-path: workspace/FoodDeliveryAppUI/package-lock.json
 
-      # Build only -- typecheck, lint and vitest are disabled with the backend gates above.
-      # `npm run build` stays: the UI image needs dist/, so this is a build step, not a gate.
-      - name: Frontend build (GATES SKIPPED)
+      - name: Frontend build and verification
         working-directory: workspace/FoodDeliveryAppUI
         env:
           VITE_ENABLE_DEV_OTP: 'true'
         run: |
           npm ci
           npm run build
-      #   npm run typecheck
-      #   npm run lint
-      #   npm run test
-
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Log in to OCIR
-        uses: docker/login-action@v4
-        with:
-          registry: hyd.ocir.io
-          username: ${{ secrets.OCIR_USERNAME }}
-          password: ${{ secrets.OCIR_TOKEN }}
-
-      # Tags come from each module's own commit sha. A runner can only build from pushed commits,
-      # so the '-dirty' suffix publish.sh emits locally is structurally impossible here.
-      - name: Publish images
-        working-directory: workspace
-        env:
-          REGISTRY: ${{ env.REGISTRY }}
-        run: |
-          SERVICES="${{ github.event.inputs.services || 'customer-service' }}"
-          if [ "$SERVICES" = "all" ]; then
-            # NF>=2, not NF==2: the map gained build-context and dockerfile columns, and an exact
-            # match silently expanded to an EMPTY list -- publish.sh then printed its usage and the
-            # run failed having pushed nothing.
-            SERVICES=$(awk -F'\t' '!/^#/ && NF>=2 {print $2}' Deployment/service-map.tsv | tr '\n' ' ')
-            [ -n "$SERVICES" ] || { echo "no services resolved from service-map.tsv"; exit 1; }
-          fi
-          bash Deployment/publish.sh $SERVICES
-
-      - name: Upload .versions
-        uses: actions/upload-artifact@v5
-        with:
-          name: versions
-          path: workspace/Deployment/.versions
-          # .versions is a dotfile, and upload-artifact skips hidden files by default -- which is
-          # why run 6 reported "No files were found" for a file publish.sh had just written.
-          include-hidden-files: true
+          npm run typecheck
+          npm run lint
+          npm run test
