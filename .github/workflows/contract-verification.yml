@@ -22,6 +22,10 @@ on:
   repository_dispatch:
     types: [module-pushed]
 
+concurrency:
+  group: contract-verification
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
