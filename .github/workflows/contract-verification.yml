@@ -280,7 +280,13 @@ jobs:
 
       - name: Static validators
         working-directory: workspace
-        run: python3 FoodDeliveryContracts/validate_core_services.py
+        run: |
+          python3 FoodDeliveryContracts/validate_core_services.py
+          python3 FoodDeliveryContracts/validate_gateway_reachability.py
+          # Deployment/ config. These six assertions were LedgerService unit tests until
+          # 2026-09-09; they assert facts about the Deployment repo, which no individual
+          # service build checks out, so all six errored in every service CI run.
+          python3 FoodDeliveryContracts/validate_deployment_config.py
 
       # The UI has its own gates and they are not covered by the Maven reactor. Without this,
       # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
