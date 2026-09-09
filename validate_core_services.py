@@ -312,7 +312,12 @@ def check_i16():
             if re.search(r'@Generated\b', src):
                 m_tot -= 1
                 continue
-            acc = len(re.findall(r'\n\s+public\s+[\w<>,\[\].$ ]+\s+(get|set|is)[A-Z]\w*\(', src))
+            # A method that implements an interface is not a delomboked accessor. A Feign fallback
+            # such as LedgerClientFallback carries one @Override per client method, several of which
+            # begin with "get" -- counting those tripped this check on a class that has no
+            # boilerplate to replace. A real delomboked getter is never @Override.
+            src_no_overrides = re.sub(r'\n\s+@Override\s*\n\s+public\s+[\w<>,\[\].$ ]+\s+\w+\(', '\n', src)
+            acc = len(re.findall(r'\n\s+public\s+[\w<>,\[\].$ ]+\s+(get|set|is)[A-Z]\w*\(', src_no_overrides))
             # a HAND-WRITTEN builder is `public static class <Class>Builder`; the mere
             # presence of a nested class plus the word "Builder" is not evidence of one.
             has_builder = re.search(r'public static class \w+Builder\b', src) is not None
