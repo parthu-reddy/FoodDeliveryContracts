@@ -25,7 +25,17 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-GW = ROOT / "ApiGateway/src/main/resources/application.yml"
+# Both gateway route files, because they are NOT the same route set and only one of them runs in a
+# deployment. ConfigService serves Deployment/ as a native config repo, and Spring Cloud Config
+# properties override the local application.yml -- and even command-line args, via
+# override-system-properties. Verified 2026-09-10 against /actuator/gateway/routes: 30 effective
+# routes, every one of them from Deployment/api-gateway.yml, and no local-only route id present.
+# Checking only the local file is how 23 browser paths (all of /api/v1/money/**, admin payouts and
+# admin user management) sat unrouted in the production config while this reported 109/109.
+GATEWAY_CONFIGS = (
+    ("production (served by ConfigService)", ROOT / "Deployment/api-gateway.yml"),
+    ("local fallback (config server off)", ROOT / "ApiGateway/src/main/resources/application.yml"),
+)
 UI = ROOT / "FoodDeliveryAppUI/src"
 
 # Served by the gateway itself or the UI's own express server, never routed downstream.
@@ -47,9 +57,9 @@ def ant(pattern):
     return re.compile("^" + re.sub(r"\\\{[^}]*\\\}", "[^/]+", rx) + "$")
 
 
-def load_gateway():
+def load_gateway(gw_path):
     routes, rbac = [], {}
-    for doc in yaml.safe_load_all(GW.read_text()):
+    for doc in yaml.safe_load_all(gw_path.read_text()):
         if not doc:
             continue
         if "rbac" in doc:
@@ -105,11 +115,7 @@ def browser_calls():
     return calls
 
 
-def main():
-    routes, rbac = load_gateway()
-    served = load_served()
-    calls = browser_calls()
-
+def audit(routes, rbac, served, calls):
     findings = []
     for path in sorted(calls):
         probe = re.sub(r":([A-Za-z_][A-Za-z0-9_]*)", "X", path)
@@ -137,11 +143,29 @@ def main():
         if not any(probe == a or probe.startswith(a + "/")
                    for paths in rbac.values() for a in paths):
             findings.append(("NO RBAC RULE FOR ANY ROLE", path, where))
+    return findings
 
-    for kind, path, where in findings:
-        print(f"[FAIL] {kind}\n         {path}\n         called in {where}")
-    print(f"\n{len(calls) - len(findings)}/{len(calls)} browser paths are routed, served and authorised")
-    return 1 if findings else 0
+
+def main():
+    served = load_served()
+    calls = browser_calls()
+
+    rc = 0
+    for label, gw_path in GATEWAY_CONFIGS:
+        if not gw_path.exists():
+            print(f"[FAIL] missing gateway config: {gw_path}")
+            rc = 1
+            continue
+        routes, rbac = load_gateway(gw_path)
+        findings = audit(routes, rbac, served, calls)
+        rel = gw_path.relative_to(ROOT)
+        print(f"=== {rel}  --  {label} ===")
+        for kind, path, where in findings:
+            print(f"[FAIL] {kind}\n         {path}\n         called in {where}")
+        print(f"{len(calls) - len(findings)}/{len(calls)} browser paths are routed, served and authorised\n")
+        if findings:
+            rc = 1
+    return rc
 
 
 if __name__ == "__main__":

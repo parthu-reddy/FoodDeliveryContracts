@@ -13,6 +13,7 @@ Deliberately has no third-party dependencies and does not need a database, a bro
 """
 from __future__ import annotations
 import os, re, sys, json, argparse
+import yaml
 from pathlib import Path
 
 def _find_workspace_root() -> Path:
@@ -1490,13 +1491,103 @@ def check_schema_immutable():
           if violations else "")
 
 
+
+# ---------------------------------------------------------------- GW-RATELIMIT
+# Both gateway route files. Deployment/api-gateway.yml is the one that governs production: it is
+# served by ConfigService's native backend, and Spring Cloud Config properties override the local
+# application.yml (and even command-line args, via override-system-properties). The local file is
+# the fallback used when the config server is disabled, e.g. ApiGatewayApplicationStartupTest.
+GATEWAY_ROUTE_FILES = (
+    "Deployment/api-gateway.yml",
+    "ApiGateway/src/main/resources/application.yml",
+)
+
+# Spring Cloud Gateway ADDS default-filters to every route's chain rather than letting a route
+# override them, so a RequestRateLimiter there stacks with the route's own and the stricter bucket
+# wins. Declaring it per route is the only way a route's stated limit is the limit it gets.
+# Verified against /actuator/gateway/routes on 2026-09-10.
+TILE_ROUTE_MARKERS = ("olamaps", "ola-maps")
+# A cold MapLibre load is ~50-70 requests (style, TileJSONs, sprite, glyph ranges, one vector tile
+# per visible grid cell per source) and MapLibre never retries a tile the gateway rejects: a 429
+# leaves a permanently blank square. This is a floor, not a target.
+TILE_BURST_FLOOR = 200
+
+
+def _gateway_docs(path):
+    for doc in yaml.safe_load_all(path.read_text()):
+        if isinstance(doc, dict):
+            yield doc
+
+
+def check_gateway_rate_limits():
+    problems = []
+    checked_routes = 0
+    for rel in GATEWAY_ROUTE_FILES:
+        path = ROOT / rel
+        if not path.exists():
+            problems.append(f"{rel}: file missing")
+            continue
+        found_routes = False
+        for doc in _gateway_docs(path):
+            gw = (doc.get("spring") or {}).get("cloud", {}).get("gateway")
+            if not isinstance(gw, dict):
+                continue
+
+            for f in gw.get("default-filters") or []:
+                name = f.get("name") if isinstance(f, dict) else str(f).split("=")[0].strip()
+                if name == "RequestRateLimiter":
+                    problems.append(
+                        f"{rel}: RequestRateLimiter is in default-filters. It stacks onto every "
+                        f"route, so the stricter bucket binds and a route's own limit is ignored. "
+                        f"Declare it per route instead.")
+
+            routes = gw.get("routes")
+            if not isinstance(routes, list):
+                continue
+            found_routes = True
+            for r in routes:
+                rid = r.get("id", "<no id>")
+                limiters = [f for f in (r.get("filters") or [])
+                            if isinstance(f, dict) and f.get("name") == "RequestRateLimiter"]
+                if not limiters:
+                    problems.append(f"{rel}: route '{rid}' has no RequestRateLimiter")
+                    continue
+                if len(limiters) > 1:
+                    problems.append(f"{rel}: route '{rid}' declares {len(limiters)} rate limiters")
+                checked_routes += 1
+                args = limiters[0].get("args") or {}
+                if not args.get("key-resolver"):
+                    problems.append(f"{rel}: route '{rid}' rate limiter has no key-resolver")
+                burst = args.get("redis-rate-limiter.burstCapacity")
+                replenish = args.get("redis-rate-limiter.replenishRate")
+                if burst is None or replenish is None:
+                    problems.append(f"{rel}: route '{rid}' rate limiter is missing a rate or burst")
+                    continue
+                if burst < replenish:
+                    problems.append(
+                        f"{rel}: route '{rid}' burstCapacity {burst} is below replenishRate "
+                        f"{replenish}; the bucket can never hold one second of traffic")
+                if any(m in rid for m in TILE_ROUTE_MARKERS) and burst < TILE_BURST_FLOOR:
+                    problems.append(
+                        f"{rel}: tile route '{rid}' burstCapacity {burst} is below the "
+                        f"{TILE_BURST_FLOOR} floor; a cold map load will be partly rejected and "
+                        f"MapLibre does not retry a rejected tile")
+        if not found_routes:
+            problems.append(f"{rel}: no spring.cloud.gateway.routes found")
+
+    check("GW-RATELIMIT", "every gateway route declares its own rate limit",
+          not problems, "; ".join(problems))
+
+
+
 def run():
     for fn in (check_i1, check_orphan_annotations, check_authz, check_i3, check_i4, check_i5, check_i8, check_i9,
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
                check_i26, check_i27_i29, check_i28, check_i31, check_i32, check_i34,
                check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
                check_messaging_context_minimal, check_modifying_queries_are_transactional, check_ci_root_pom_matches, check_query_parameters_are_bound, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
-               check_spec_matches_controllers, check_g10, check_schema_immutable):
+               check_spec_matches_controllers, check_g10, check_schema_immutable,
+               check_gateway_rate_limits):
         try:
             fn()
         except Exception as e:  # a broken check must not look like a passing one
