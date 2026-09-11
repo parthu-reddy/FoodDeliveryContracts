@@ -253,25 +253,13 @@ jobs:
         working-directory: workspace
         run: mvn -q -B -N -f FoodDeliveryParent/pom.xml install
 
-      # ---------------------------------------------------------------------------------------
-      # TESTS DISABLED 2026-08-30, temporarily, at the owner's request.
+      # Not `mvn install` with extra steps. build_verify.sh runs two passes so mutually dependent
+      # modules can resolve each other's contract stubs, checks that every published stub jar
+      # actually CONTAINS stubs, and confirms the generated contract tests really executed.
       #
-      # Measured: the full gate is 15m26s of compute even with a warm Maven cache, and caching
-      # only saves 1m34s. This workflow now BUILDS ONLY, so an image is available in a few
-      # minutes instead of ~18.
-      #
-      # WHAT THIS GIVES UP: build_verify.sh is not `mvn install` with extra steps. It runs two
-      # passes so mutually-dependent modules can resolve each other's contract stubs, checks that
-      # every published stub jar actually CONTAINS stubs, and confirms the generated contract
-      # tests really executed. None of that runs below. An image published by this workflow is
-      # compiled, not verified.
-      #
-      # Until this is restored, run the gate locally before trusting a published tag:
-      #     bash FoodDeliveryContracts/build_verify.sh
-      #     python3 FoodDeliveryContracts/validate_core_services.py
-      #
-      # To restore: delete the build-only step and uncomment the two steps beneath it.
-      # ---------------------------------------------------------------------------------------
+      # It costs about 15m of compute with a warm Maven cache (measured 2026-08-30; caching saves
+      # only ~1m34s). It was disabled for that reason on 2026-08-30 and restored since -- the
+      # comment saying the workflow "BUILDS ONLY" outlived the change by twelve days and is gone.
       - name: Reactor build and gates
         working-directory: workspace
         env:
