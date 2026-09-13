@@ -253,19 +253,14 @@ jobs:
         working-directory: workspace
         run: mvn -q -B -N -f FoodDeliveryParent/pom.xml install
 
-      # Not `mvn install` with extra steps. build_verify.sh runs two passes so mutually dependent
-      # modules can resolve each other's contract stubs, checks that every published stub jar
-      # actually CONTAINS stubs, and confirms the generated contract tests really executed.
+      # The two-pass reactor build was removed on 2026-09-13. It existed because four pairs of
+      # services needed each other's contract stubs, so in any single pass one side of each pair was
+      # verified against a stale stub. Stubs are now published to the shared contracts registry and
+      # every consumer resolves them in its own build, which removes the cycle rather than sequencing
+      # around it. That build cost ~15m of compute per run.
       #
-      # It costs about 15m of compute with a warm Maven cache (measured 2026-08-30; caching saves
-      # only ~1m34s). It was disabled for that reason on 2026-08-30 and restored since -- the
-      # comment saying the workflow "BUILDS ONLY" outlived the change by twelve days and is gone.
-      - name: Reactor build and gates
-        working-directory: workspace
-        env:
-          MVN_OFFLINE: ""
-        run: bash FoodDeliveryContracts/build_verify.sh
-
+      # The checkouts above stay. The validators below scan `*/src/main/**` across repositories, so
+      # checking out fewer would not fail -- it would quietly check less, which is worse.
       - name: Static validators
         working-directory: workspace
         run: |
@@ -276,22 +271,7 @@ jobs:
           # service build checks out, so all six errored in every service CI run.
           python3 FoodDeliveryContracts/validate_deployment_config.py
 
-      # The UI has its own gates and they are not covered by the Maven reactor. Without this,
-      # vitest, the msw handlers and the generated-schema typecheck never run in CI -- which is
-      # exactly what validate_core_services.py's I-18c asserts.
-      - uses: actions/setup-node@v5
-        with:
-          node-version-file: 'workspace/FoodDeliveryAppUI/.nvmrc'
-          cache: npm
-          cache-dependency-path: workspace/FoodDeliveryAppUI/package-lock.json
-
-      - name: Frontend build and verification
-        working-directory: workspace/FoodDeliveryAppUI
-        env:
-          VITE_ENABLE_DEV_OTP: 'true'
-        run: |
-          npm ci
-          npm run build
-          npm run typecheck
-          npm run lint
-          npm run test
+      # The frontend section was removed on 2026-09-13. FoodDeliveryAppUI's own workflow runs
+      # npm ci / typecheck / lint / test / build, so running them here as well doubled the work
+      # without adding a check. validate_core_services.py's I-18c was updated to look at that
+      # workflow instead of this one.

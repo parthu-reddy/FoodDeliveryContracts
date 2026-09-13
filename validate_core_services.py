@@ -441,8 +441,16 @@ def check_i18():
     src = read(wf) if wf.exists() else ""
     check("I-18b", "the CI workflow text does not reference Testcontainers", "estcontainer" not in src,
           "ci-cd.yml provisions docker:dind for Testcontainers, which are forbidden by project rule")
-    check("I-18c", "the CI workflow text includes a frontend step", "setup-node" in src or "npm ci" in src,
-          "no Node step in ci-cd.yml; vitest, msw and pacts never run")
+    # Updated 2026-09-13. This asserted a Node step in contract-verification.yml, which ran the UI
+    # gates a second time -- FoodDeliveryAppUI's own workflow already runs typecheck, lint, test and
+    # build. The duplicate was removed, so the check now looks where the work actually happens. The
+    # intent is unchanged: vitest, msw and the generated-schema typecheck must run SOMEWHERE in CI.
+    ui_wf = ROOT / "FoodDeliveryAppUI/.github/workflows/build-and-push.yml"
+    ui = read(ui_wf) if ui_wf.exists() else ""
+    check("I-18c", "the UI gates run in CI",
+          all(t in ui for t in ("npm run typecheck", "npm run lint", "npm run test")),
+          "FoodDeliveryAppUI's workflow does not run typecheck, lint and test; vitest, msw and the "
+          "generated-schema typecheck would never run in CI")
 
 
 # ---------------------------------------------------------------- I-19
