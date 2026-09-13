@@ -58,7 +58,14 @@ def registered_names():
 def feign_clients():
     """service name -> {"paths": set, "callers": [(module, file, has_url_override)]}"""
     clients = {}
-    for src in glob.glob(f"{REPO}/*/src/main/java/**/*.java", recursive=True):
+    # Two glob depths on purpose. CommonLibrary became an aggregator of six modules on 2026-09-12,
+    # so every @FeignClient it publishes now sits at <repo>/CommonLibrary/common-web/src/main/java/...
+    # -- one level deeper than the single `*` reaches. Without the second pattern this validator saw
+    # only the clients services declare themselves, and reported three contracts as matching no Feign
+    # path when the paths were simply out of view.
+    sources = (glob.glob(f"{REPO}/*/src/main/java/**/*.java", recursive=True)
+               + glob.glob(f"{REPO}/*/*/src/main/java/**/*.java", recursive=True))
+    for src in sources:
         body = read(src)
         if "@FeignClient" not in body:
             continue

@@ -38,6 +38,24 @@ ROOT = _find_workspace_root()
 APPS = ["CustomerApplication", "RestaurantApplication",
         "DeliveryExecutiveApplication", "MapsIntegration"]
 MODULES = APPS + ["CommonLibrary"]
+
+def common_src(rel: str):
+    """Resolve a path under the old CommonLibrary/src/main against the module layout.
+
+    CommonLibrary became an aggregator of six modules on 2026-09-12, so
+    `CommonLibrary/src/main/...` stopped existing. Every validator hardcoding it went blind and
+    reported the code it could no longer see as missing -- nine checks across two gates, none of
+    which described a real regression. Resolving by search rather than by a fixed module name means
+    a class moving between modules does not break this again.
+    """
+    rel = rel.lstrip("/")
+    for kind in ("java", "resources"):
+        for mod in sorted((ROOT / "CommonLibrary").iterdir()):
+            p = mod / "src/main" / kind / rel
+            if p.exists():
+                return p
+    return ROOT / "CommonLibrary" / "src/main/java" / rel   # non-existent: callers report "missing"
+
 UI = ROOT / "FoodDeliveryAppUI"
 
 results: list[tuple[str, str, bool, str]] = []
@@ -47,12 +65,39 @@ def check(fid: str, name: str, ok: bool, detail: str = "") -> None:
     results.append((fid, name, ok, detail))
 
 
+
+def all_main_java():
+    """Every main java source in the workspace, descending into aggregator modules.
+
+    `all_main_java()` reaches one level and so stopped seeing CommonLibrary after
+    the 2026-09-12 split. Four checks kept passing on a smaller corpus, which is the dangerous
+    direction: a scan that finds less does not fail, it just stops looking.
+    """
+    seen = set()
+    for pat in ("*/src/main/**/*.java", "*/*/src/main/**/*.java"):
+        for f in ROOT.glob(pat):
+            if f not in seen:
+                seen.add(f)
+                yield f
+
 def main_java(mod: str):
+    """Main sources of a module, including an aggregator's submodules.
+
+    CommonLibrary has had no src/ of its own since the 2026-09-12 split; its sources live in
+    common-core, common-persistence, common-messaging, common-web, common-storage and common-test.
+    Walking only `<mod>/src/main` silently yielded nothing for it, and callers reading that emptiness
+    reported real code as absent.
+    """
     base = ROOT / mod / "src/main"
-    if not base.exists():
+    if base.exists():
+        for p in base.rglob("*.java"):
+            yield p
         return
-    for p in base.rglob("*.java"):
-        yield p
+    for sub in sorted((ROOT / mod).iterdir()):
+        sub_base = sub / "src/main"
+        if sub_base.is_dir():
+            for p in sub_base.rglob("*.java"):
+                yield p
 
 
 def test_java(mod: str):
@@ -184,7 +229,7 @@ def check_authz():
 
 # ---------------------------------------------------------------- I-3
 def check_i3():
-    p = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/security/CommonSecurityConfig.java"
+    p = common_src("com/fooddelivery/common/security/CommonSecurityConfig.java")
     src = read(p) if p.exists() else ""
     bad = 'requestMatchers("/api/v1/internal/**").permitAll()' in src.replace(" ", "").replace(
         'requestMatchers("/api/v1/internal/**").permitAll()', 'requestMatchers("/api/v1/internal/**").permitAll()')
@@ -192,7 +237,7 @@ def check_i3():
     check("I-3a", "/api/v1/internal/** is not blanket permitAll", not bad,
           f"{rel(p)}: carve-out still present" if bad else "")
 
-    f = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/security/SecurityContextFilter.java"
+    f = common_src("com/fooddelivery/common/security/SecurityContextFilter.java")
     fsrc = read(f) if f.exists() else ""
     verified = any(t in fsrc for t in ("verify", "Signature", "AuctionTokenService", "Hmac", "hmac"))
     check("I-3b", "SecurityContextFilter verifies the identity it trusts", verified,
@@ -221,7 +266,7 @@ def check_i4():
 
 # ---------------------------------------------------------------- I-5
 def check_i5():
-    p = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/outbox/service/OutboxProcessor.java"
+    p = common_src("com/fooddelivery/common/outbox/service/OutboxProcessor.java")
     src = read(p) if p.exists() else ""
     sets = bool(re.search(r'headers\(\)\.add\(\s*(HEADER_EVENT_ID|"eventId")', src))
     check("I-5a", "OutboxProcessor publishes an eventId header", sets,
@@ -459,7 +504,7 @@ def check_i19():
 
 # ---------------------------------------------------------------- I-22
 def check_i22():
-    p = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/outbox/repository/OutboxEventRepository.java"
+    p = common_src("com/fooddelivery/common/outbox/repository/OutboxEventRepository.java")
     declared = "deleteProcessedEventsOlderThan" in (read(p) if p.exists() else "")
     callers = []
     for mod in MODULES:
@@ -515,7 +560,7 @@ def check_i27_i29():
 
 # ---------------------------------------------------------------- I-28
 def check_i28():
-    p = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/outbox/service/OutboxProcessor.java"
+    p = common_src("com/fooddelivery/common/outbox/service/OutboxProcessor.java")
     src = read(p) if p.exists() else ""
     bad = re.search(r"kafkaTemplate\.send\([^)]*\)\.get\(\s*\)", src) is not None
     check("I-28", "outbox send is awaited with a timeout", not bad,
@@ -574,7 +619,7 @@ def check_i34():
 
 # ---------------------------------------------------------------- I-35
 def check_i35():
-    p = ROOT / "CommonLibrary/src/main/resources/db/migration/common/V20260811150000__add_common_entities.sql"
+    p = common_src("db/migration/common/V20260811150000__add_common_entities.sql")
     src = read(p) if p.exists() else ""
     bad = "'PENDING'" in src
     check("I-35", "outbox status default is a real OutboxStatus", not bad,
@@ -837,13 +882,30 @@ STRICT_SCHEMAS = {
     "RestaurantApplication:TimingDTO": ["closingTime", "openingTime"],
     "RestaurantApplication:TimingRequest": ["closingTime", "openingTime"],
     "RestaurantApplication:VerificationCallbackRequest": ["status", "verificationType"],
-    "ReviewsService:ApiResponsePagedModelReviewResponseDto": ["message", "success", "timestamp"],
+    # Re-baselined 2026-09-11 for the order-scoped review contract
+    # (RandomDocuments/ReviewsIntegration_2026-09-11).
+    # ReviewResponseDto was replaced by the ReviewDto / ReviewDetailDto pair so that redaction is a
+    # property of the type rather than a runtime branch, and CreateReviewRequest became an
+    # order-scoped batch. The ratchet fired on all five, which is exactly what it is for: the
+    # baseline moves only because the change was deliberate, and it moves to a stricter set --
+    # 17 schemas listed where there were 7.
+    "ReviewsService:AggregateBatchDto": ["aggregates", "entityType"],
+    "ReviewsService:ApiResponseAggregateBatchDto": ["message", "success", "timestamp"],
+    "ReviewsService:ApiResponseListReviewDetailDto": ["message", "success", "timestamp"],
+    "ReviewsService:ApiResponsePagedModelReviewDetailDto": ["message", "success", "timestamp"],
+    "ReviewsService:ApiResponsePagedModelReviewDto": ["message", "success", "timestamp"],
     "ReviewsService:ApiResponseReviewAggregateDto": ["message", "success", "timestamp"],
-    "ReviewsService:ApiResponseReviewResponseDto": ["message", "success", "timestamp"],
-    "ReviewsService:CreateReviewRequest": ["entityId", "entityType", "rating"],
-    "ReviewsService:PagedModelReviewResponseDto": ["content"],
+    "ReviewsService:ApiResponseReviewEligibilityDto": ["message", "success", "timestamp"],
+    "ReviewsService:CreateReviewRequest": ["entries", "orderId"],
+    "ReviewsService:PageMetadata": ["number", "size", "totalElements", "totalPages"],
+    "ReviewsService:PagedModelReviewDetailDto": ["content"],
+    "ReviewsService:PagedModelReviewDto": ["content"],
     "ReviewsService:ReviewAggregateDto": ["averageRating", "entityId", "entityType", "totalReviews"],
-    "ReviewsService:ReviewResponseDto": ["createdAt", "entityId", "entityType", "id", "rating", "userId"],
+    "ReviewsService:ReviewDetailDto": ["createdAt", "entityId", "entityType", "id", "orderId", "rating", "userId"],
+    "ReviewsService:ReviewDto": ["createdAt", "entityId", "entityType", "id", "rating"],
+    "ReviewsService:ReviewEligibilityDto": ["orderId", "reviewable", "targets"],
+    "ReviewsService:ReviewEntryRequest": ["entityId", "entityType", "rating"],
+    "ReviewsService:ReviewTargetDto": ["alreadyReviewed", "displayName", "entityId", "entityType"],
     "WalletService:ApiResponseMapStringString": ["message", "success", "timestamp"],
     "WalletService:ApiResponseString": ["message", "success", "timestamp"],
     "WalletService:CreateWalletRequest": ["currency"],
@@ -886,7 +948,7 @@ def check_mcp_identity():
     # and \w does not match a dot. Second regex miss in this one check, both found by break-testing.
     builds_token = re.compile(r"new\s+[\w.]*UsernamePasswordAuthenticationToken\s*\(|"
                               r"SecurityContextHolder\s*\.\s*getContext\s*\(\s*\)\s*\.\s*setAuthentication")
-    for f in sorted(ROOT.glob("*/src/main/**/*.java")):
+    for f in sorted(all_main_java()):
         src = read(f)
         src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
         src = re.sub(r"//[^\n]*", "", src)
@@ -934,7 +996,7 @@ def check_scheduled_jobs_classified():
     # somewhere in the file: a loose "// TODO @replication-safe:" comment satisfied the first
     # version of this check (found by break-testing it on 2026-08-27).
     unmarked = []
-    for f in sorted(ROOT.glob("*/src/main/**/*.java")):
+    for f in sorted(all_main_java()):
         src = read(f)
         # Strip BOTH comment forms before deciding the file has a @Scheduled. Stripping only "//"
         # was not enough: on 2026-08-28 a javadoc on FeignSecurityInterceptor that mentioned
@@ -972,12 +1034,19 @@ def check_idempotency_key_retention():
     registered and that nobody has reintroduced a local copy.
     """
     problems = []
-    imports = ROOT / "CommonLibrary/src/main/resources/META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports"
-    if not imports.is_file() or "IdempotencySweepConfiguration" not in read(imports):
+    # After the split there is one .imports per module, and the sweeper is registered in exactly one
+    # of them. Reading only the first match found common-messaging's, which lists OutboxConfiguration
+    # and nothing else.
+    registered = any(
+        "IdempotencySweepConfiguration" in read(f)
+        for f in (ROOT / "CommonLibrary").rglob(
+            "src/main/resources/META-INF/spring/"
+            "org.springframework.boot.autoconfigure.AutoConfiguration.imports"))
+    if not registered:
         problems.append("IdempotencySweepConfiguration is not registered -- nothing sweeps idempotency keys")
-    if not (ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/idempotency/IdempotencyKeySweeper.java").is_file():
+    if not (common_src("com/fooddelivery/common/idempotency/IdempotencyKeySweeper.java")).is_file():
         problems.append("IdempotencyKeySweeper is missing from CommonLibrary")
-    for f in ROOT.glob("*/src/main/**/*.java"):
+    for f in all_main_java():
         mod = f.relative_to(ROOT).parts[0]
         if mod == "CommonLibrary":
             continue
@@ -999,11 +1068,11 @@ def check_money_not_through_double():
     actually fixes it, so both halves are checked.
     """
     problems = []
-    jackson = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/config/JacksonConfig.java"
+    jackson = common_src("com/fooddelivery/common/config/JacksonConfig.java")
     if not jackson.is_file() or "USE_BIG_DECIMAL_FOR_FLOATS" not in read(jackson):
         problems.append("the platform ObjectMapper does not parse floats as BigDecimal")
     money = re.compile(r"(?i)(amount|price|balance|fee|total|refund|payout|charge|spend)")
-    for f in ROOT.glob("*/src/main/**/*.java"):
+    for f in all_main_java():
         src = re.sub(r"/\*.*?\*/", "", read(f), flags=re.S)
         src = re.sub(r"//[^\n]*", "", src)
         for i, line in enumerate(src.splitlines(), 1):
@@ -1381,7 +1450,7 @@ def check_spec_matches_controllers():
 
 # ---------------------------------------------------------------- G-10
 def check_g10():
-    f = ROOT / "CommonLibrary/src/main/java/com/fooddelivery/common/filter/IdempotencyFilter.java"
+    f = common_src("com/fooddelivery/common/filter/IdempotencyFilter.java")
     if not f.exists():
         return
     registered = []
