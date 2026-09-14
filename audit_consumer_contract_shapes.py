@@ -328,7 +328,7 @@ try:
     import subprocess
     inv = subprocess.run(
         [sys.executable,
-         os.path.join(WS, "RandomDocuments/TypedEventBinding_2026-09-13/tools/"
+         os.path.join(WS, "FoodDeliveryContracts/tools/event_binding/"
                           "inventory_event_binding.py"), "--report"],
         capture_output=True, text=True, cwd=WS)
     mm = re.search(r"consumer classes:\s*(\d+)", inv.stdout)

@@ -1724,7 +1724,7 @@ def check_event_binding_no_retry():
 
 def check_event_binding_ratchet():
     import subprocess
-    script_path = ROOT / "RandomDocuments/TypedEventBinding_2026-09-13/tools/inventory_event_binding.py"
+    script_path = ROOT / "FoodDeliveryContracts/tools/event_binding/inventory_event_binding.py"
     if not script_path.exists():
         check("EVENT-BINDING", "event binding ratchet passes", False, f"script missing at {rel(script_path)}")
         return

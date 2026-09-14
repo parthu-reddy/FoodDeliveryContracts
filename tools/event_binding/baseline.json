@@ -1,0 +1,119 @@
+{
+  "BiddingEngine/CampaignEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "BiddingEngine/src/main/java/com/fooddelivery/advertisement/bidding/messaging/CampaignEventConsumer.java"
+  },
+  "BudgetLimitingService/CampaignSyncConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "BudgetLimitingService/src/main/java/com/fooddelivery/advertisement/pacing/messaging/CampaignSyncConsumer.java"
+  },
+  "CampaignService/CampaignAlertConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CampaignService/src/main/java/com/fooddelivery/ad/campaign/kafka/CampaignAlertConsumer.java"
+  },
+  "CampaignService/KafkaAnalyticsConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CampaignService/src/main/java/com/fooddelivery/ad/campaign/kafka/KafkaAnalyticsConsumer.java"
+  },
+  "CommunicationIntegration/AdNotificationListener": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CommunicationIntegration/src/main/java/com/fooddelivery/notification/service/AdNotificationListener.java"
+  },
+  "CommunicationIntegration/NotificationEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CommunicationIntegration/src/main/java/com/fooddelivery/notification/service/NotificationEventConsumer.java"
+  },
+  "CommunicationService/RefundDecisionListener": {
+    "bound": false,
+    "ceiling": 0,
+    "note": "Nothing to bind: the listener takes a typed OutboxEvent envelope and forwards getPayload() verbatim as chat message content. It never parses the inner payload, so it reads no fields by design. Ceiling 0 still protects it -- any new string-keyed read fails the ratchet.",
+    "path": "CommunicationService/src/main/java/com/fooddelivery/chat/listener/RefundDecisionListener.java"
+  },
+  "CustomerApplication/ChatRefundProcessorService": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CustomerApplication/src/main/java/com/fooddelivery/order/service/ChatRefundProcessorService.java"
+  },
+  "CustomerApplication/MenuCacheInvalidationListener": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CustomerApplication/src/main/java/com/fooddelivery/customer/service/MenuCacheInvalidationListener.java"
+  },
+  "CustomerApplication/OrderEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CustomerApplication/src/main/java/com/fooddelivery/order/service/OrderEventConsumer.java"
+  },
+  "CustomerApplication/PaymentEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "CustomerApplication/src/main/java/com/fooddelivery/order/service/PaymentEventConsumer.java"
+  },
+  "DeliveryExecutiveApplication/OrderEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "DeliveryExecutiveApplication/src/main/java/com/fooddelivery/delivery/service/OrderEventConsumer.java"
+  },
+  "GovernmentIDValidationService/BrandCreatedEventListener": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "GovernmentIDValidationService/src/main/java/com/fooddelivery/governmentid/event/BrandCreatedEventListener.java"
+  },
+  "LedgerService/LedgerEventListener": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "LedgerService/src/main/java/com/fooddelivery/ledger/listener/LedgerEventListener.java"
+  },
+  "MapsIntegration/DispatchEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "MapsIntegration/src/main/java/com/fooddelivery/mapsintegration/service/DispatchEventConsumer.java"
+  },
+  "ONDCIntegrationService/ConfirmEventProcessor": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "ONDCIntegrationService/src/main/java/com/fooddelivery/ondc/processor/ConfirmEventProcessor.java"
+  },
+  "ONDCIntegrationService/SearchEventProcessor": {
+    "bound": false,
+    "ceiling": 9,
+    "note": "ONDC is parked (compile-and-run only; correctness not required). 9 reads left deliberately. Its payload is the Beckn {context, message} envelope, which is nested and versioned by ONDC, not by this platform.",
+    "path": "ONDCIntegrationService/src/main/java/com/fooddelivery/ondc/processor/SearchEventProcessor.java"
+  },
+  "PaymentGatewayIntegration/PaymentEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "PaymentGatewayIntegration/src/main/java/com/fooddelivery/payments/service/PaymentEventConsumer.java"
+  },
+  "RestaurantApplication/OrderEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "RestaurantApplication/src/main/java/com/fooddelivery/restaurant/service/OrderEventConsumer.java"
+  },
+  "RestaurantApplication/ReviewEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "RestaurantApplication/src/main/java/com/fooddelivery/restaurant/service/ReviewEventConsumer.java"
+  },
+  "WalletService/BillingEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "WalletService/src/main/java/com/fooddelivery/wallet/kafka/BillingEventConsumer.java"
+  },
+  "WalletService/RefundCreditConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "WalletService/src/main/java/com/fooddelivery/wallet/kafka/RefundCreditConsumer.java"
+  },
+  "WalletService/TopupEventConsumer": {
+    "bound": true,
+    "ceiling": 0,
+    "path": "WalletService/src/main/java/com/fooddelivery/wallet/kafka/TopupEventConsumer.java"
+  }
+}
