@@ -1729,14 +1729,16 @@ def check_event_binding_ratchet():
         check("EVENT-BINDING", "event binding ratchet passes", False, f"script missing at {rel(script_path)}")
         return
     
+    env = os.environ.copy()
+    env["FD_WORKSPACE"] = str(ROOT)
     result = subprocess.run(
         [sys.executable, str(script_path)],
-        capture_output=True, text=True, cwd=str(ROOT)
+        capture_output=True, text=True, cwd=str(ROOT), env=env
     )
     
     ok = result.returncode == 0
     # Surface the last line of stdout (e.g. "OK: ...") if it passed, else the stderr/stdout failures
-    detail = result.stdout.strip().split("\n")[-1] if ok else result.stdout.strip()
+    detail = result.stdout.strip().split("\n")[-1] if ok else (result.stderr.strip() or result.stdout.strip())
     check("EVENT-BINDING", "event binding ratchet passes", ok, detail)
 
 
