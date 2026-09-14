@@ -1657,6 +1657,89 @@ def check_gateway_rate_limits():
 
 
 
+def check_event_binding_no_retry():
+    """A payload that cannot bind must reach the DLT immediately, not after N backed-off retries.
+
+    Retrying is pure waste -- the bytes are identical on every attempt -- and on the order and money
+    topics it delays the DLT signal by three to five backoffs. Consumers express this with
+    @RetryableTopic(exclude = {EventBindingException.class}, traversingCauses = "true").
+
+    Three parts, and the third is the one that is easy to get wrong:
+
+      1. exclude names EventBindingException;
+      2. traversingCauses is "true" -- nine consumers catch Exception and rethrow
+         `new RuntimeException(e)`, and without traversal the classifier sees only the wrapper;
+      3. include does NOT contain RuntimeException. Traversal stops at the first CLASSIFIED type, so
+         a broad include marks the wrapper retryable and the excluded cause underneath is never
+         reached. RestaurantApplication had exactly that; the configuration looked correct and did
+         nothing. Measured in BindingFailureIsNotRetryableTest.
+
+    Comments are stripped first: this check's own first draft matched "@RetryableTopic(exclude)"
+    inside a comment and reported a consumer that has no such annotation at all.
+    """
+    EXC = "EventBindingException"
+    no_exclude, no_traverse, broad_include = [], [], []
+    for mod in sorted(p for p in ROOT.iterdir() if p.is_dir() and not p.name.startswith(".")):
+        java_root = mod / "src/main/java"
+        if not java_root.exists():
+            continue
+        for f in java_root.rglob("*.java"):
+            raw = read(f)
+            if "@KafkaListener" not in raw or not re.search(r"eventBinder\.(bind|bindIf)\(", raw):
+                continue
+            src = re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", raw, flags=re.S))
+            m = re.search(r"@RetryableTopic\(", src)
+            if not m:
+                continue          # no retry configured at all: nothing to exclude
+            depth, i = 0, m.end() - 1
+            while i < len(src):
+                if src[i] == "(":
+                    depth += 1
+                elif src[i] == ")":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                i += 1
+            args = src[m.end():i]
+            if EXC not in args:
+                no_exclude.append(rel(f))
+            if not re.search(r'traversingCauses\s*=\s*"true"', args):
+                no_traverse.append(rel(f))
+            inc = re.search(r"include\s*=\s*\{([^}]*)\}", args)
+            if inc and re.search(r"\bRuntimeException\.class\b", inc.group(1)):
+                broad_include.append(rel(f))
+
+    detail = []
+    if no_exclude:
+        detail.append(f"exclude misses {EXC}: " + "; ".join(no_exclude[:4]))
+    if no_traverse:
+        detail.append('traversingCauses != "true" (a wrapped cause is never seen): '
+                      + "; ".join(no_traverse[:4]))
+    if broad_include:
+        detail.append("include lists RuntimeException, which defeats the exclusion for a wrapped "
+                      "cause: " + "; ".join(broad_include[:4]))
+    check("EVENT-BIND-NO-RETRY", "an unbindable payload goes straight to the DLT",
+          not (no_exclude or no_traverse or broad_include), " | ".join(detail))
+
+
+def check_event_binding_ratchet():
+    import subprocess
+    script_path = ROOT / "RandomDocuments/TypedEventBinding_2026-09-13/tools/inventory_event_binding.py"
+    if not script_path.exists():
+        check("EVENT-BINDING", "event binding ratchet passes", False, f"script missing at {rel(script_path)}")
+        return
+    
+    result = subprocess.run(
+        [sys.executable, str(script_path)],
+        capture_output=True, text=True, cwd=str(ROOT)
+    )
+    
+    ok = result.returncode == 0
+    # Surface the last line of stdout (e.g. "OK: ...") if it passed, else the stderr/stdout failures
+    detail = result.stdout.strip().split("\n")[-1] if ok else result.stdout.strip()
+    check("EVENT-BINDING", "event binding ratchet passes", ok, detail)
+
+
 def run():
     for fn in (check_i1, check_orphan_annotations, check_authz, check_i3, check_i4, check_i5, check_i8, check_i9,
                check_i10, check_i15, check_i16, check_i17, check_i18, check_i19, check_i22,
@@ -1664,7 +1747,7 @@ def run():
                check_i35, check_i36, check_i37, check_mcp_identity, check_scheduled_jobs_classified, check_idempotency_key_retention, check_money_not_through_double,
                check_messaging_context_minimal, check_modifying_queries_are_transactional, check_ci_root_pom_matches, check_query_parameters_are_bound, check_spring_boot_config_ambiguity, check_contract_stub_cycles, check_schema_strictness_ratchet,
                check_spec_matches_controllers, check_g10, check_schema_immutable,
-               check_gateway_rate_limits):
+               check_gateway_rate_limits, check_event_binding_ratchet, check_event_binding_no_retry):
         try:
             fn()
         except Exception as e:  # a broken check must not look like a passing one

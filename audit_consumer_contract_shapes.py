@@ -20,13 +20,24 @@ SKIP = {".git", "target", "node_modules", "venv"}
 
 # ---------- resolve topic constants ----------
 consts = {}
-for rel in ["CommonLibrary/src/main/java/com/fooddelivery/common/constants/KafkaConstants.java",
-            "ONDCIntegrationService/src/main/java/com/fooddelivery/ondc/config/OndcKafkaConfig.java"]:
-    p = os.path.join(WS, rel)
-    if os.path.exists(p):
-        for m in re.finditer(r'String\s+(TOPIC_[A-Z_]+)\s*=\s*"([^"]+)"', open(p).read()):
+for root_, dirs, files in os.walk(WS):
+    dirs[:] = [d for d in dirs if d not in SKIP]
+    if "KafkaConstants.java" in files:
+        for m in re.finditer(r'String\s+(TOPIC_[A-Z_]+)\s*=\s*"([^"]+)"', open(os.path.join(root_, "KafkaConstants.java")).read()):
+            consts[m.group(1)] = m.group(2)
+    if "OndcKafkaConfig.java" in files:
+        for m in re.finditer(r'String\s+(TOPIC_[A-Z_]+)\s*=\s*"([^"]+)"', open(os.path.join(root_, "OndcKafkaConfig.java")).read()):
             consts[m.group(1)] = m.group(2)
 
+
+# A tool that cannot resolve its own vocabulary must not run. Both dictionaries above were loaded
+# from hardcoded CommonLibrary paths until 2026-09-13; the module split deleted those paths, the
+# `if os.path.exists` guard swallowed it, every KafkaConstants.TOPIC_* resolved to None, and the
+# `if not topic: continue` below dropped 20 of 23 consumers. The audit printed three rows and
+# exited 0 for a day. Empty here is that state -- fail, never measure less quietly.
+if not consts:
+    sys.exit("FATAL: no TOPIC_* constants found. KafkaConstants.java moved or changed shape; "
+             "fix this resolver rather than letting the audit examine a subset.")
 
 def body_block(src):
     """Extract the text inside outputMessage's body([...]) with bracket matching."""
@@ -113,11 +124,13 @@ def _payload_constants():
     that made this audit read it as touching no fields at all.
     """
     out = {}
-    path = os.path.join(WS, "CommonLibrary/src/main/java/com/fooddelivery/common/constants/"
-                            "EventPayloadConstants.java")
-    try:
-        src = open(path).read()
-    except OSError:
+    src = ""
+    for root_, dirs, files in os.walk(WS):
+        dirs[:] = [d for d in dirs if d not in SKIP]
+        if "EventPayloadConstants.java" in files:
+            src = open(os.path.join(root_, "EventPayloadConstants.java")).read()
+            break
+    if not src:
         return out
     for m in re.finditer(r'String\s+([A-Z_]+)\s*=\s*"([^"]+)"', src):
         out[m.group(1)] = m.group(2)
@@ -194,6 +207,8 @@ def field_reads(body, src, pattern=r'\.(?:get|path)\(\s*'):
 
 
 findings = []
+unverified = []      # examined, but no contract could confirm or deny the shape
+examined = []        # every consumer class this audit actually looked at
 print(f"{'consumer':<34}{'topic':<30}status")
 print("-" * 96)
 
@@ -210,7 +225,8 @@ for root_, dirs, files in os.walk(WS):
             raw = m.group(1).strip()
             topic = raw.strip('"') if raw.startswith('"') else consts.get(raw.split(".")[-1])
             if not topic:
-                continue
+                print(f"FATAL: unresolved topic constant for {raw} in {name}")
+                sys.exit(1)
             all_variants = by_topic.get(topic) or []
             svc = os.path.relpath(p, WS).split(os.sep)[0]
             name = f[:-5]
@@ -230,10 +246,12 @@ for root_, dirs, files in os.walk(WS):
             else:
                 variants = all_variants
 
+            examined.append(f"{svc}/{name}")
             if not variants:
-                why = ("no contract - skipped" if not all_variants
-                       else f"no contract for {', '.join(sorted(handled))} - skipped")
+                why = ("UNVERIFIED - no contract on this topic" if not all_variants
+                       else f"UNVERIFIED - no contract for {', '.join(sorted(handled))}")
                 print(f"{name:<34}{topic:<30}{why}")
+                unverified.append((name, topic, why))
                 continue
             # .get()/.path() are required reads; .has() is an existence probe, so a field only
             # ever probed is optional by construction and must not count as a mismatch.
@@ -270,9 +288,19 @@ for root_, dirs, files in os.walk(WS):
                 # Either way there is no required shape here, so a contract can neither confirm nor
                 # deny one -- and OK would be a pass earned by reading nothing. Both of these were
                 # reporting OK before 2026-09-12.
-                why = ("every field is probed before use - none required" if probes
-                       else "reads no fields here - delegates or only logs")
+                # No string-keyed reads here. Since typed binding landed that is usually the
+                # GOAL, not a gap -- but a contract still cannot confirm a shape this consumer
+                # never spells out, so OK would be a pass earned by reading nothing. That exact
+                # vacuous OK was fixed on 2026-09-12 and binding recreates the condition for
+                # every consumer it succeeds on. Report it as unverified and count it.
+                if probes:
+                    why = "UNVERIFIED - every field is probed before use, none required"
+                elif "readValue" in src or "eventBinder" in src:
+                    why = "UNVERIFIED - binds a typed class; no string-keyed shape to compare"
+                else:
+                    why = "UNVERIFIED - reads no fields here; delegates or only logs"
                 print(f"{name:<34}{topic:<30}{why}")
+                unverified.append((name, topic, why))
                 continue
             if ok_any:
                 print(f"{name:<34}{topic:<30}OK")
@@ -291,6 +319,34 @@ for root_, dirs, files in os.walk(WS):
                     print(f"{'':<64}- {d}")
                 findings.append((svc, name, topic, detail))
 
+# ---------- C7: coverage. A consumer this audit never looked at is a consumer nothing checks.
+# The inventory tool is the independent count: it walks the tree, strips comments, and resolves
+# constants the same way. A disagreement means one of the two went blind -- which is exactly the
+# failure that left this script at 3 of 23 -- so it is an error, not a note.
+coverage_error = None
+try:
+    import subprocess
+    inv = subprocess.run(
+        [sys.executable,
+         os.path.join(WS, "RandomDocuments/TypedEventBinding_2026-09-13/tools/"
+                          "inventory_event_binding.py"), "--report"],
+        capture_output=True, text=True, cwd=WS)
+    mm = re.search(r"consumer classes:\s*(\d+)", inv.stdout)
+    if mm:
+        expected = int(mm.group(1))
+        if len(set(examined)) != expected:
+            coverage_error = (f"examined {len(set(examined))} consumer classes but the inventory "
+                              f"tool finds {expected}")
+        _expected_total = expected
+    else:
+        coverage_error = "could not read a consumer count from the inventory tool"
+except Exception as exc:
+    coverage_error = f"could not run the inventory tool: {exc}"
+
 print()
+print(f"audit: {len(set(examined))}/{_expected_total if '_expected_total' in dir() else '?'} "
+      f"consumers examined, {len(findings)} flagged, {len(unverified)} unverified")
+if coverage_error:
+    print(f"FATAL: {coverage_error}")
 print(f"{len(findings)} consumer(s) flagged. Verify each by reading before acting.")
-sys.exit(1 if findings else 0)
+sys.exit(1 if (findings or coverage_error) else 0)
