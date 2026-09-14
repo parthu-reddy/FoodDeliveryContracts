@@ -217,6 +217,13 @@ jobs:
           path: workspace/FoodDeliveryAppUI
           token: ${{ secrets.CHECKOUT_TOKEN }}
 
+      - name: RandomDocuments
+        uses: actions/checkout@v5
+        with:
+          repository: parthu-reddy/RandomDocuments
+          path: workspace/RandomDocuments
+          token: ${{ secrets.CHECKOUT_TOKEN }}
+
       # ubuntu-latest starts with ~14 GB free. This job wants far more: 26 checkouts, a Maven
       # reactor whose ~/.m2 alone is 2.6 GB, node_modules, and 20 Docker images built locally
       # before being pushed. Publishing one service fit; twenty did not -- the runner filled up,
