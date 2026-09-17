@@ -15,7 +15,12 @@ Phase 6 (assertions), because it cannot be done meaningfully against the current
 - [x] Contract for `platform.logistics.dispatch` (DeliveryExecutiveApplication, 2 green incl. Redis).
 - [x] Contracts for `ad-billing-events`, `ad-tracking-events` (UserTrackingService, 2 green).
 - [x] Contract for `order-events` / `DISPATCH_CANDIDATE_FOUND` (MapsIntegration, 1 green).
-- [x] Contract for `delivery-executive-events` (GovernmentIDValidationService, 1 green).
+- [~] ~~Contract for `delivery-executive-events` (GovernmentIDValidationService, 1 green).~~
+      **Removed 2026-09-17.** The topic had no consumer: biometric lockout published a suspension
+      event nobody acted on, so the driver was never suspended. The contract stayed green because
+      its trigger re-implemented the publish instead of calling the service. The service now calls
+      `DeliveryExecutiveClient.suspendDriver()`, covered by `BiometricLockoutSuspensionTest` and
+      the existing `GovIdContractConsumerTest`.
 - [x] Contracts for `ondc-order-created` and `ondc-settlement-event` (ONDCIntegrationService, 2 green).
 - [x] **Redis Pub/Sub** contract for `tracking:order:{orderId}` asserting the real
       `TelemetryEventRequest` shape. Fed by an in-memory direct publish because a colon is not a

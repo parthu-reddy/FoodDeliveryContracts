@@ -278,7 +278,17 @@ def check_i5():
             src = read(f)
             if '"eventId"' in src:
                 readers.append(rel(f))
-            if re.search(r'topic\s*\+\s*"-"\s*\+\s*partition|nameUUIDFromBytes', src):
+            # nameUUIDFromBytes is only a defect when it MANUFACTURES an idempotency key the
+            # consumer then trusts -- i.e. it is assigned to the resolved event id, papering over a
+            # missing eventId header. Deriving a DETERMINISTIC id for an event the consumer
+            # publishes is the opposite: MapsIntegration's DispatchEventConsumer requires the
+            # incoming header (it throws without one) and derives the outgoing eventId from it, so a
+            # redelivery republishes the same id and downstream consumers de-duplicate. That
+            # replaced UUID.randomUUID() on the published events and is strictly better; this check
+            # flagged it only because it matched the method name anywhere in the file.
+            manufactures_key = re.search(
+                r'(resolvedEventId|eventId|idempotencyKey\w*)\s*=\s*[^;]*nameUUIDFromBytes', src)
+            if re.search(r'topic\s*\+\s*"-"\s*\+\s*partition', src) or manufactures_key:
                 randoms.append(rel(f))
     check("I-5b", "no consumer falls back to a random idempotency key", not randoms,
           "; ".join(randoms))

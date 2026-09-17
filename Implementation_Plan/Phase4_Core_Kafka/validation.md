@@ -10,12 +10,17 @@ Run a strict Python validation script that loads all Groovy contracts using AST/
 **Expected Outcome:** Script exits with code 0. All trigger methods exist, have `@Test` annotations, and successfully inject a message into the internal Kafka template mock.
 
 ## 2. Mathematical Consumer Listener Coverage
-From `crosscheck_report_v2.md`, we know there are exactly 25 `@KafkaListener` annotations across all microservices. Execute an automated test counter to guarantee full coverage:
+Do not hardcode the listener count — it drifts. (It was recorded as 25 from the Schema Registry
+crosscheck; that report was deleted on 2026-09-17 when the Avro migration was retired, and the
+count was 23 when last measured.) Derive it at validation time, stripping comments and string
+literals first, because a class that merely *mentions* `@KafkaListener` in a comment inflates a
+naive grep — `OrderSagaOrchestrator` did exactly that:
+
 ```bash
-# Test execution counting
+# Execute: python3 scripts/count_kafka_listeners.py   # prints N, the live annotation count
 mvn test -Dtest=*KafkaConsumerTest* | grep "Tests run:"
 ```
-**Expected Outcome:** The aggregate "Tests run" MUST equal exactly 25. If there are fewer than 25 executed CDC consumer tests for Kafka, a listener contract was missed.
+**Expected Outcome:** The aggregate "Tests run" MUST equal the derived N. Fewer means a listener contract was missed.
 
 ## 3. Postel's Law Automated Audit
 Use an automated schema validator to compare the Groovy `outputMessage` bodies against the full Database Entities.

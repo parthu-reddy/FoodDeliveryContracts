@@ -4,7 +4,12 @@
 Establish messaging contracts for the core asynchronous event streams (Kafka topics). This replaces the need for the Schema Registry by validating the JSON payload structure at build time using Spring Cloud Contract Messaging.
 
 ## 1. Producer Identification
-Based on the Kafka crosscheck report (`crosscheck_report_v2.md`), the core event producers are:
+The core event producers are listed below. (This list came from the Schema Registry crosscheck
+report, deleted 2026-09-17 when that migration was retired — see
+`RandomDocuments/SchemaRegistryMigration/00_master_overview.md`. Parts of it have since drifted:
+`CatalogService` now publishes `menu-events` through the outbox rather than directly, and
+`NotificationRouterService` has moved out of `CommonLibrary` and no longer publishes to Kafka.
+Re-derive from the source before relying on it.)
 - `CustomerApplication` (Produces to `order-events`, `chat-events`)
 - `PaymentService` (Produces to `payment-events`)
 - `RestaurantApplication` (Produces to `restaurant-events`, `menu-events`)
@@ -12,7 +17,9 @@ Based on the Kafka crosscheck report (`crosscheck_report_v2.md`), the core event
 - `UserTrackingService` (Produces to `ad-billing-events`, `ad-tracking-events`)
 - `CommonLibrary` (Outbox dynamically produces: `notification-events`, `platform.notifications.dispatch`, `wallet-events`, `ledger-events`, `ad-events`)
 - `MapsIntegration` (Produces to `order-events` for DISPATCH_CANDIDATE_FOUND)
-- `GovernmentIDValidationService` (Produces to `delivery-executive-events`)
+- ~~`GovernmentIDValidationService` (Produces to `delivery-executive-events`)~~ — removed
+  2026-09-17; the topic had no consumer and the suspension it carried never happened. Now an
+  internal HTTP call to `delivery-service`.
 - `ONDCIntegrationService` (Produces to `ondc-order-created`, `ondc-settlement-event`, `ondc-search-request`, `ondc-callback-dlq`)
 
 ## 2. Defining Messaging Contracts (Producer Side)
