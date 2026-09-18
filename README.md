@@ -68,3 +68,4 @@ Nothing here is a Java artifact. The scripts are tooling; `META-INF/` was only e
 by Spring Cloud Contract over a `git://` URL that never worked. Absence of pom references says nothing
 about whether the directory is alive — the scripts are used constantly and referenced from
 `HttpContractRemediation/`, `RandomDocuments/claude/`, and this repo's CI plan.
+
