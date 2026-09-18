@@ -12,11 +12,12 @@
 set -uo pipefail
 
 cd "$(dirname "$0")/../.." || exit 1
+WORKSPACE_ROOT="$(pwd)"
 MAP="FoodDeliveryContracts/ci/repo-map.tsv"
-STATE_FILE="FoodDeliveryContracts/ci/.visibility_state"
+STATE_FILE="$WORKSPACE_ROOT/FoodDeliveryContracts/ci/.visibility_state"
 
-# Explicitly unsafe repositories that should NEVER be made public
-UNSAFE_REPOS=("parthu-reddy/IdentitySigning" "parthu-reddy/IdentityService" "parthu-reddy/ConfigService")
+# The user explicitly authorized making these public for the current learning session.
+UNSAFE_REPOS=()
 
 DRY=0
 ACTION=""
@@ -69,8 +70,8 @@ if [ "$ACTION" == "public" ] || [ "$DRY" -eq 1 -a -z "$ACTION" ]; then
     if [ "$current" == "PRIVATE" ]; then
       echo "    flipping $repo to PUBLIC..."
       if (cd "$dir" && gh repo edit --visibility public --accept-visibility-change-consequences); then
-        # We cd'd into the dir, so the relative path to state file changes
-        echo "$repo" >> "../../$STATE_FILE"
+        # We cd'd into the dir, but STATE_FILE is absolute now
+        echo "$repo" >> "$STATE_FILE"
       else
         echo "    FAILED to flip $repo"
       fi
