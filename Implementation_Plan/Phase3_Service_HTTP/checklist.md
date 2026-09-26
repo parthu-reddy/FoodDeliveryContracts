@@ -38,8 +38,13 @@ not assert what this phase requires.
       `RestaurantServiceClient`; inject and assert `IdentityServiceClient`.
 - [ ] **Gap 3 - ONDCIntegrationService.** Assert `CustomerServiceClient`, `DeliveryServiceClient`
       and `LedgerServiceClient` (only `RestaurantServiceClient` is currently exercised).
-- [ ] **Gap 4 - RestaurantApplication.** Exercise the injected `AdvertisementClient` against the
-      BiddingEngine `fetchAds` stub.
+- [x] **Gap 4 - RestaurantApplication.** ~~Exercise the injected `AdvertisementClient` against the
+      BiddingEngine `fetchAds` stub.~~ Closed by deletion (2026-09-25). The premise was wrong: this
+      client targeted `campaign-service`, not BiddingEngine. It backed a `/api/v1/campaigns` proxy
+      that had no caller (the UI calls CampaignService via `campaignApi`) and was unreachable, as the
+      gateway routes `/api/v1/campaigns/**` to campaign-service. Its DTOs had drifted from
+      `CampaignResponse`/`CampaignRequest`. Client, fallback, controller and DTOs removed;
+      `validate_phase3_consumers.py` reports 0 problems.
 - [ ] **Gap 5 - CampaignService.** Create `CampaignContractConsumerTest` asserting
       `PaymentServiceClient`.
 - [ ] Re-run the Phase 3 validator; every named client must be both injected **and** invoked.

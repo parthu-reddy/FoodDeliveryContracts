@@ -38,7 +38,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BASELINE = os.path.join(HERE, "baseline.json")
 
 SKIP_DIRS = {".git", "target", "node_modules", "venv", ".hypothesis", ".schemathesis",
-             "fooddeliveryappui verify", "generated-test-sources", "build"}
+             "generated-test-sources", "build"}
 
 # consumer class -> package roots it hands the JsonNode to. Confirmed by reading each one.
 DELEGATES = {
