@@ -42,10 +42,11 @@ UI = ROOT / "FoodDeliveryAppUI/src"
 LOCAL = ("/api/config", "/api/logs")
 # GlobalJwtAuthFilter's public list.
 # Mirrors GlobalJwtAuthFilter: the public list, plus the /internal/auth carve-outs it names
-# explicitly (initiate, verify, admin/otp, logout, sessions and sessions/*).
+# explicitly (initiate, verify, logout, sessions and sessions/*). The legacy admin OTP route is
+# deliberately absent: it is a blocked regression path, not a browser API.
 PUBLIC = ("/api/v1/webhooks/", "/webhooks/", "/olamaps/", "/actuator/", "/api/test/",
           "/api/v1/internal/auth/initiate", "/api/v1/internal/auth/verify",
-          "/api/v1/internal/auth/admin/otp", "/api/v1/internal/auth/logout",
+          "/api/v1/internal/auth/logout",
           "/api/v1/internal/auth/sessions")
 # ONDC is parked (compile-and-run only); its adapter is not browser-facing.
 SKIP_SERVICES = {"ONDCIntegrationService", "ApiGateway", "EurekaServer"}
