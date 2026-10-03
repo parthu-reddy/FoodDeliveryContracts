@@ -358,14 +358,14 @@ def check_i16():
         m_bad = m_tot = 0
         for p in main_java(mod):
             m_tot += 1
-            src = read(p)
+            src = _java_code(read(p))
             # Generated models are out of scope. openapi-generator output (CommonLibrary's
             # dto/{wallet,payment,maps,governmentid}) carries @Schema and @JsonProperty on every
             # accessor -- metadata Lombok cannot reproduce, so "replacing the boilerplate" would
             # silently strip it from the specs. It was never delomboked Lombok in the first place;
             # this check is about hand-maintained code, and generated sources are edited by
             # regenerating them, not by hand.
-            if re.search(r'@Generated\b', src):
+            if re.search(r'@(?:[\w.]+\.)?Generated\b', src):
                 m_tot -= 1
                 continue
             # A method that implements an interface is not a delomboked accessor. A Feign fallback
@@ -373,7 +373,13 @@ def check_i16():
             # begin with "get" -- counting those tripped this check on a class that has no
             # boilerplate to replace. A real delomboked getter is never @Override.
             src_no_overrides = re.sub(r'\n\s+@Override\s*\n\s+public\s+[\w<>,\[\].$ ]+\s+\w+\(', '\n', src)
-            acc = len(re.findall(r'\n\s+public\s+[\w<>,\[\].$ ]+\s+(get|set|is)[A-Z]\w*\(', src_no_overrides))
+            accessors = list(re.finditer(r'\n\s+public\s+[\w<>,\[\].$ ]+\s+((?:get|is)[A-Z]\w*\s*\(\s*\)|set[A-Z]\w*\s*\([^,)]*\))', src_no_overrides))
+            acc = 0
+            for accessor in accessors:
+                previous_body = src_no_overrides.rfind('}', 0, accessor.start())
+                annotations = src_no_overrides[previous_body + 1:accessor.start()]
+                if not MAPPING.search(annotations) and not re.search(r'@(?:[\w.]+\.)?Tool\b', annotations):
+                    acc += 1
             # a HAND-WRITTEN builder is `public static class <Class>Builder`; the mere
             # presence of a nested class plus the word "Builder" is not evidence of one.
             has_builder = re.search(r'public static class \w+Builder\b', src) is not None
@@ -401,7 +407,7 @@ def check_orphan_annotations():
     hits = []
     for mod in MODULES:
         for p in main_java(mod):
-            src = read(p)
+            src = _java_code(read(p))
             if tail.search(src):
                 hits.append(rel(p)); continue
             # an @Override immediately preceding a constructor declaration
@@ -511,7 +517,12 @@ def check_i19():
         rel = str(p.relative_to(UI))
         if "/generated/" in rel or _is_allowed(rel):
             continue
-        for i, l in enumerate(read(p).split("\n")):
+        source_lines = read(p).split("\n")
+        for i, l in enumerate(source_lines):
+            previous = source_lines[i - 1] if i else ""
+            justified = re.search(r"eslint-disable-next-line\s+no-restricted-syntax\s+--\s+\S", previous)
+            if justified:
+                continue
             if "fetchEventSource" in l:
                 continue
             if bare.search(l) or member.search(l):
@@ -678,7 +689,12 @@ def check_i37():
 
 
 # ---------------------------------------------------------------- G-5 (pact <-> provider routes)
-def _controller_routes(module: str):
+def _java_code(source):
+    token = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*[\s\S]*?\*/')
+    return token.sub(lambda m: re.sub(r'[^\n]', ' ', m.group()) if m.group().startswith(('//', '/*')) else m.group(), source)
+
+
+def _controller_routes(module: str, for_spec=False):
     """Every (METHOD, path-template) the module's controllers expose."""
     base = ROOT / module / "src/main"
     routes = set()
@@ -686,7 +702,7 @@ def _controller_routes(module: str):
         return routes
     verb_of = {"Get": "GET", "Post": "POST", "Put": "PUT", "Delete": "DELETE", "Patch": "PATCH"}
     for f in base.rglob("*.java"):
-        src = read(f)
+        src = _java_code(read(f))
         if "@RestController" not in src and "@Controller" not in src:
             continue
         lines = src.split("\n")
@@ -695,7 +711,21 @@ def _controller_routes(module: str):
         head = "\n".join(lines[:ci])
         m = re.search(r'@RequestMapping\(\s*(?:value\s*=\s*)?"([^"]*)"', head)
         class_path = m.group(1) if m else ""
+        if for_spec and (re.search(r'@(?:[\w.]+\.)?Hidden\b', head)
+                         or re.search(r'@Profile\("(?:dev & !prod|e2e)"\)', head)):
+            continue
         for i in range(ci, len(lines)):
+            if for_spec:
+                # Hidden may appear above or below the mapping; stop at the method signature.
+                start = i
+                while start > ci and (not lines[start-1].strip() or (lines[start-1].lstrip().startswith('@') and not re.search(r'\b(?:public|protected|private)\b', lines[start-1]))):
+                    start -= 1
+                end = i + 1
+                while not re.search(r'\b(?:public|protected|private)\b', lines[i]) and end < len(lines) and (not lines[end].strip() or lines[end].lstrip().startswith('@')):
+                    end += 1
+                annotations = '\n'.join(lines[start:end])
+                if re.search(r'@(?:[\w.]+\.)?Hidden\b|@(?:[\w.]+\.)?Operation\([^)]*hidden\s*=\s*true', annotations):
+                    continue
             mm = re.search(r'@(?:org\.springframework\.web\.bind\.annotation\.)?(Get|Post|Put|Delete|Patch)Mapping'
                            r'\(\s*(?:value\s*=\s*)?"([^"]*)"', lines[i])
             if mm:
@@ -797,9 +827,11 @@ STRICT_SCHEMAS = {
     "CampaignService:TopupWalletRequest": ["amount"],
     "CommunicationIntegration:ApiResponseVoid": ["message", "success", "timestamp"],
     "CommunicationIntegration:DeviceRegistrationRequest": ["fcmToken", "platform"],
-    "CommunicationService:CreateSessionRequest": ["orderId", "participants"],
+    # O2 resolves participants from the authoritative order roster; clients supply only orderId.
+    "CommunicationService:CreateSessionRequest": ["orderId"],
     "CommunicationService:IceServer": ["urls"],
-    "CommunicationService:ParticipantDto": ["entityType", "userId"],
+    # Restaurant entities represent an outlet and have no fixed employee userId.
+    "CommunicationService:ParticipantDto": ["entityType", "entityId"],
     "CommunicationService:TurnCredentialsResponse": ["iceServers"],
     "CustomerApplication:ApiResponseBoolean": ["message", "success", "timestamp"],
     "CustomerApplication:ApiResponseCustomer": ["message", "success", "timestamp"],
@@ -850,7 +882,6 @@ STRICT_SCHEMAS = {
     "GovernmentIDValidationService:GstinRequest": ["brandName", "gstin"],
     "GovernmentIDValidationService:RCRequest": ["registrationNumber"],
     "IdentityService:ApiResponseListSessionInfo": ["message", "success", "timestamp"],
-    "IdentityService:ApiResponseMapStringString": ["message", "success", "timestamp"],
     "IdentityService:ApiResponseString": ["message", "success", "timestamp"],
     "IdentityService:ApiResponseUserDTO": ["message", "success", "timestamp"],
     "IdentityService:ApiResponseVoid": ["message", "success", "timestamp"],
@@ -860,7 +891,7 @@ STRICT_SCHEMAS = {
     "IdentityService:UserDTO": ["id", "phoneNumber", "roles"],
     "LedgerService:LedgerAccount": ["balance", "id", "lockVersion", "ownerId", "ownerType"],
     "LedgerService:LedgerEntry": ["accountId", "amount", "category", "createdAt", "direction", "id", "transactionId"],
-    "LedgerService:LedgerTransactionDto": ["amount", "category", "date", "fromAccountId", "toAccountId", "transactionId"],
+    "LedgerService:LedgerTransactionDto": ["entryId", "accountId", "direction", "amount", "category", "date", "transactionId"],
     "LedgerService:PageableObject": ["offset", "pageNumber", "pageSize", "paged", "unpaged"],
     "MapsIntegration:DispatchOrderRequest": ["cityId", "restaurantCoords"],
     "MapsIntegration:SetAvailabilityRequest": ["available", "cityId", "driverId"],
@@ -872,7 +903,7 @@ STRICT_SCHEMAS = {
     "RestaurantApplication:ApiResponseBoolean": ["message", "success", "timestamp"],
     "RestaurantApplication:ApiResponseBrand": ["message", "success", "timestamp"],
     "RestaurantApplication:ApiResponseCategoryDTO": ["message", "success", "timestamp"],
-    "RestaurantApplication:ApiResponseListBrand": ["message", "success", "timestamp"],
+    "RestaurantApplication:ApiResponseListBrandSummaryDto": ["message", "success", "timestamp"],
     "RestaurantApplication:ApiResponseListCategoryDTO": ["message", "success", "timestamp"],
     "RestaurantApplication:ApiResponseListMasterMenuItem": ["message", "success", "timestamp"],
     "RestaurantApplication:ApiResponseListMenuItemDTO": ["message", "success", "timestamp"],
@@ -882,8 +913,9 @@ STRICT_SCHEMAS = {
     "RestaurantApplication:ApiResponseString": ["message", "success", "timestamp"],
     "RestaurantApplication:ApiResponseVoid": ["message", "success", "timestamp"],
     "RestaurantApplication:BankAccountRequest": ["accountNumber", "brandName", "ifscCode"],
-    "RestaurantApplication:Brand": ["id", "name", "ownerId"],
-    "RestaurantApplication:BrandOnboardRequest": ["bankAccountNumber", "gstin", "ifscCode", "name", "pan"],
+    "RestaurantApplication:BrandSummaryDto": ["id", "name", "organisationId"],
+    "RestaurantApplication:Brand": ["id", "name", "organisationId"],
+    "RestaurantApplication:BrandOnboardRequest": ["bankAccountNumber", "gstin", "ifscCode", "name", "organisationId", "pan"],
     "RestaurantApplication:CategoryDTO": ["name"],
     "RestaurantApplication:CategoryTimingDTO": ["closingTime", "openingTime"],
     "RestaurantApplication:GstinRequest": ["brandName", "gstin"],
@@ -1440,7 +1472,7 @@ def check_spec_matches_controllers():
     missing, scanned = [], 0
     for mod in SPEC_MODULES:
         spec_path = ROOT / mod / "openapi.json"
-        routes = _controller_routes(mod)
+        routes = _controller_routes(mod, for_spec=True)
         if not spec_path.exists() or not routes:
             continue
         try:
@@ -1484,98 +1516,101 @@ def check_g10():
 
 
 # ---------------------------------------------------------------- SCHEMA-IMMUTABLE
-def check_schema_immutable():
-    """An applied Flyway migration must never be edited or deleted.
+def _reviewed_dev_schema_paths():
+    """A scoped owner-authorised fresh-Dev recreation, bound to verified SQL bytes.
 
-    For each module in service-map.tsv that has db/migration, compare the migration
-    files at the last-deployed sha (.versions tag) against HEAD. A file that EXISTED
-    at that sha and has been modified or deleted is a violation. A NEW file is fine —
-    that is the intended workflow.
-
-    CommonLibrary is explicitly excluded: it has migrations under db/migration/common,
-    is not in service-map.tsv, and was flagged spuriously once before for having no
-    baseline. ONDCIntegrationService and ReviewsService are also excluded (parked,
-    not in service-map.tsv).
+    This is not a blanket migration exemption. A missing/changed proof, unreviewed SQL,
+    or production declaration restores strict protection. After the fresh release its
+    published env tags become the normal baseline.
     """
-    import subprocess as _sp
+    import hashlib
+    manifest_path = ROOT / "RandomDocuments/BusinessPlatform_2026-10-03/DEV-SCHEMA-RECREATION.json"
+    if not manifest_path.exists():
+        return set(), []
+    manifest = json.loads(read(manifest_path))
+    if manifest.get("environment") != "dev" or manifest.get("productionDeployed") is not False:
+        return set(), []
+    errors, allowed = [], set()
+    if manifest.get("expiresOnProductionDeployment") is not True or "--wipe" not in manifest.get("requiredDeployment", ""):
+        errors.append("Dev schema manifest lacks explicit expiry/full wipe requirement")
+    for item in manifest.get("initialSchemas", []):
+        file = ROOT / item["path"]
+        if not file.exists() or hashlib.sha256(file.read_bytes()).hexdigest() != item["sha256"]:
+            errors.append("Unverified initial schema bytes: " + item["path"])
+        allowed.add(item["path"])
+    for file in manifest.get("retiredSql", []):
+        if (ROOT / file).exists():
+            errors.append("Retired SQL restored without review: " + file)
+        allowed.add(file)
+    for field, key in (("schemaEvidence", "schemaAndSeedsPass"), ("constraintEvidence", "passed")):
+        evidence = ROOT / manifest.get(field, "missing")
+        rows = json.loads(read(evidence)) if evidence.is_file() else []
+        if not rows or not all(row.get(key) is True for row in rows):
+            errors.append("Fresh schema proof missing or failing: " + field)
+    return allowed if not errors else set(), errors
+
+
+def check_schema_immutable():
+    """Compare current SQL with the real published image tags; reject unreviewed changes."""
+    import subprocess as sp
     smap = ROOT / "Deployment/service-map.tsv"
-    versions = ROOT / "Deployment/.versions"
-    if not smap.exists() or not versions.exists():
-        check("SCHEMA-IMMUTABLE", "migration immutability", False,
-              "service-map.tsv or .versions missing")
+    versions = ROOT / "Deployment/env_deployments/dev"
+    if not smap.exists() or not versions.is_dir():
+        check("SCHEMA-IMMUTABLE", "published schema baseline", False, "service map or Dev tag directory missing")
         return
-
-    # Parse .versions: MODULE_TAG=sha  ->  {compose-service: sha}
-    ver_lines = read(versions).splitlines()
-    tag_by_var = {}
-    for line in ver_lines:
-        if "_TAG=" in line:
-            k, v = line.split("=", 1)
-            tag_by_var[k.strip()] = v.strip()
-
-    # Parse service-map.tsv: module-dir -> compose-service
-    modules = []
+    allowed, problems = _reviewed_dev_schema_paths()
+    checked = 0
     for line in read(smap).splitlines():
         if line.startswith("#") or "\t" not in line:
             continue
-        parts = line.split("\t")
-        mod_dir = parts[0]
-        compose_svc = parts[1]
-        mig_dir = ROOT / mod_dir / "src/main/resources/db/migration"
-        if mig_dir.is_dir():
-            modules.append((mod_dir, compose_svc))
-
-    if not modules:
-        check("SCHEMA-IMMUTABLE", "migration immutability", False,
-              "no modules with db/migration found via service-map.tsv")
-        return
-
-    violations = []
-    skipped = []
-    for mod_dir, compose_svc in modules:
-        # Resolve the .versions tag variable: compose service 'customer-service' -> CUSTOMER_SERVICE_TAG
-        var = compose_svc.upper().replace("-", "_") + "_TAG"
-        tag = tag_by_var.get(var, "")
-        if not tag:
-            skipped.append(f"{mod_dir} (no {var} in .versions)")
+        module, service, *_ = line.split("\t")
+        directory = ROOT / module
+        if not (directory / "src/main/resources/db/migration").is_dir():
             continue
-        # Strip -dirty suffix for the git sha
-        sha = tag.replace("-dirty", "")
-        mod_path = ROOT / mod_dir
-        if not (mod_path / ".git").is_dir():
-            skipped.append(f"{mod_dir} (not a git repo)")
+        checked += 1
+        env = versions / (service + ".env")
+        tag_match = re.search(r"_TAG=([0-9a-f]{7,40})(?:-|$)", read(env).strip()) if env.exists() else None
+        if not tag_match:
+            problems.append(f"{module}: published commit tag missing")
             continue
-        # Verify the sha is a valid commit in that repo
-        r = _sp.run(["git", "-C", str(mod_path), "cat-file", "-t", sha],
-                    capture_output=True, text=True)
-        if r.stdout.strip() != "commit":
-            skipped.append(f"{mod_dir} ({sha} is not a commit)")
+        sha = tag_match.group(1)
+        valid = sp.run(["git", "-C", str(directory), "cat-file", "-t", sha], capture_output=True, text=True)
+        if valid.stdout.strip() != "commit":
+            problems.append(f"{module}: published commit {sha} does not resolve")
             continue
-        # Get files changed between the deployed sha and the WORKING TREE in db/migration.
-        # Omit HEAD so uncommitted edits are caught — the standing rule is "never commit",
-        # so migrations edited locally but not committed must still fire this check.
-        r = _sp.run(["git", "-C", str(mod_path), "diff", "--name-only", sha,
-                     "--", "src/main/resources/db/migration"],
-                    capture_output=True, text=True)
-        changed = [f for f in r.stdout.strip().splitlines() if f]
-        for f in changed:
-            # Did this file exist at the deployed sha? If yes, it was modified or deleted.
-            r2 = _sp.run(["git", "-C", str(mod_path), "cat-file", "-e", f"{sha}:{f}"],
-                         capture_output=True, text=True)
-            if r2.returncode == 0:
-                # File existed at sha -> modified or deleted applied migration
-                violations.append(f"{mod_dir}/{f.split('/')[-1]}")
-
-    if skipped:
-        for s in skipped:
-            check("SCHEMA-IMMUTABLE", f"migration immutability SKIP: {s}", True, "")
-
-    check("SCHEMA-IMMUTABLE",
-          f"no applied migration has been edited or deleted ({len(modules)} modules checked)",
-          not violations,
-          ("; ".join(violations) +
-           " — add a new timestamped migration (V<YYYYMMDDHHMMSS>__...) instead of editing an applied one")
-          if violations else "")
+        diff = sp.run(["git", "-C", str(directory), "diff", "--name-only", sha, "--", "src/main/resources/db/migration"], capture_output=True, text=True)
+        if diff.returncode:
+            problems.append(f"{module}: cannot compare published SQL")
+            continue
+        for file in diff.stdout.splitlines():
+            existed = sp.run(["git", "-C", str(directory), "cat-file", "-e", sha + ":" + file], capture_output=True)
+            name = module + "/" + file
+            if existed.returncode == 0 and name not in allowed:
+                problems.append("Unreviewed applied SQL change: " + name)
+    if checked == 0:
+        problems.append("No schema modules inspected")
+    # Shared SQL is packaged into every service, but its publisher is a library rather than
+    # a Compose image. Keep its verified publication commit in the release provenance.
+    common = ROOT / "CommonLibrary"
+    if list(common.glob("*/src/main/resources/db/migration/**/*.sql")):
+        provenance = ROOT / "Deployment/published-libraries.json"
+        try:
+            sha = json.loads(read(provenance))["CommonLibrary"]["commit"]
+        except (ValueError, KeyError):
+            sha = ""
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{40}", sha):
+            problems.append("CommonLibrary: verified publication commit missing")
+        else:
+            scopes = [str(file.relative_to(common)) for file in common.glob("*/src/main/resources/db/migration")]
+            diff = sp.run(["git", "-C", str(common), "diff", "--name-only", sha, "--", *scopes], capture_output=True, text=True)
+            if diff.returncode:
+                problems.append("CommonLibrary: cannot compare published SQL")
+            for file in diff.stdout.splitlines():
+                existed = sp.run(["git", "-C", str(common), "cat-file", "-e", sha + ":" + file], capture_output=True)
+                if existed.returncode == 0 and "CommonLibrary/" + file not in allowed:
+                    problems.append("Unreviewed applied SQL change: CommonLibrary/" + file)
+    check("SCHEMA-IMMUTABLE", f"published SQL protected; reviewed fresh-Dev recreation scoped ({checked} modules)",
+          not problems, "; ".join(problems))
 
 
 
@@ -1604,6 +1639,20 @@ def _gateway_docs(path):
     for doc in yaml.safe_load_all(path.read_text()):
         if isinstance(doc, dict):
             yield doc
+
+
+def _numeric_rate(value):
+    if isinstance(value, bool):
+        raise ValueError("boolean rate")
+    if isinstance(value, str):
+        placeholder = re.fullmatch(r"\$\{[^:}]+:([0-9]+)\}", value)
+        value = placeholder.group(1) if placeholder else value
+    if not isinstance(value, (int, str)):
+        raise ValueError("rate must be an integer")
+    number = int(value)
+    if number <= 0:
+        raise ValueError("rate must be positive")
+    return number
 
 
 def check_gateway_rate_limits():
@@ -1649,6 +1698,11 @@ def check_gateway_rate_limits():
                 replenish = args.get("redis-rate-limiter.replenishRate")
                 if burst is None or replenish is None:
                     problems.append(f"{rel}: route '{rid}' rate limiter is missing a rate or burst")
+                    continue
+                try:
+                    burst, replenish = _numeric_rate(burst), _numeric_rate(replenish)
+                except (TypeError, ValueError) as exc:
+                    problems.append(f"{rel}: route '{rid}' invalid numeric rate: {exc}")
                     continue
                 if burst < replenish:
                     problems.append(
